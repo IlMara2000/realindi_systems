@@ -1,0 +1,15 @@
+data/
+__pycache__/
+*.pyc
+.DS_Store
+.playwright-cli/
+output/
+*.sqlite3
+*.sqlite3-journal
+
+.venv/
+tools/
+
+.freebuff/
+.21st/
+.cloud-attachments/
