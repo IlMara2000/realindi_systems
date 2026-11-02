@@ -1,0 +1,35 @@
+{
+  "name": "realindi-crm",
+  "version": "1.0.0",
+  "private": true,
+  "description": "REALINDI Systems CRM — TypeScript + Prisma + Vercel",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx scripts/dev-server.ts",
+    "generate": "prisma generate && esbuild generated/prisma/client.ts --bundle --format=esm --platform=node --packages=external --outfile=generated/prisma/client.js",
+    "build": "npm run generate && prisma db push && tsc --noEmit",
+    "test": "vitest run",
+    "db:push": "prisma db push",
+    "db:migrate-data": "tsx scripts/migrate-sqlite.ts",
+    "vercel-build": "npm run generate && prisma db push"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.10.1",
+    "@prisma/client": "^7.10.1",
+    "decimal.js": "^10.6.0",
+    "dotenv": "^18.0.9",
+    "fast-xml-parser": "^5.11.2",
+    "jszip": "^3.10.2",
+    "pg": "^8.23.1",
+    "xmllint-wasm": "^5.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.23.1",
+    "esbuild": "^0.28.2",
+    "prisma": "^7.10.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.0",
+    "vitest": "^5.1.0"
+  }
+}

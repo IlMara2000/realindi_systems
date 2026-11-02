@@ -1,0 +1,149 @@
+// REALINDI CRM — schema Prisma fedele al database SQLite originale.
+// I nomi dei campi restano snake_case: /api/state deve restare identico al vecchio backend.
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Default per created_at: stesso formato UTC di SQLite (CURRENT_TIMESTAMP).
+// created_at default: to_char(now() AT TIME ZONE 'utc', 'YYYY-MM-DD HH24:MI:SS')
+
+model Setting {
+  key   String @id
+  value String
+  @@map("settings")
+}
+
+model Session {
+  token   String @id
+  expires Float
+  @@map("sessions")
+}
+
+model Client {
+  id             Int     @id @default(autoincrement())
+  name           String
+  email          String
+  company        String
+  phone          String
+  vat_number     String
+  address        String
+  notes          String
+  created_at     String  @default(dbgenerated("to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD HH24:MI:SS')"))
+  country        String  @default("")
+  city           String  @default("")
+  postcode       String  @default("")
+  province       String  @default("")
+  tax_country    String  @default("")
+  tax_code       String  @default("")
+  recipient_code String  @default("")
+  pec            String  @default("")
+  buyer_type     String  @default("")
+  projects       Project[]
+  documents      Document[]
+  @@map("clients")
+}
+
+model Project {
+  id          Int       @id @default(autoincrement())
+  client_id   Int
+  title       String
+  description String
+  status      String
+  deadline    String
+  created_at  String    @default(dbgenerated("to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD HH24:MI:SS')"))
+  client      Client    @relation(fields: [client_id], references: [id])
+  quotes      Quote[]
+  invoices    Invoice[]
+  documents   Document[]
+  @@map("projects")
+}
+
+model Quote {
+  id             Int      @id @default(autoincrement())
+  project_id     Int
+  title          String
+  items          String
+  subtotal       Int
+  vat            Int
+  total          Int
+  vat_rate       String
+  status         String   @default("draft")
+  valid_until    String
+  notes          String
+  created_at     String   @default(dbgenerated("to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD HH24:MI:SS')"))
+  estimate       String?
+  generation_key String?  @unique
+  project        Project  @relation(fields: [project_id], references: [id])
+  invoice        Invoice?
+  @@map("quotes")
+}
+
+model Invoice {
+  id           Int      @id @default(autoincrement())
+  quote_id     Int?     @unique
+  project_id   Int
+  number       String?  @unique
+  snapshot     String
+  subtotal     Int
+  vat          Int
+  total        Int
+  status       String   @default("draft")
+  due_date     String
+  issued_at    String?
+  paid_at      String?
+  created_at   String   @default(dbgenerated("to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD HH24:MI:SS')"))
+  xml          Bytes?
+  xml_filename String?
+  quote        Quote?   @relation(fields: [quote_id], references: [id])
+  project      Project  @relation(fields: [project_id], references: [id])
+  @@map("invoices")
+}
+
+model Document {
+  id           Int      @id @default(autoincrement())
+  client_id    Int
+  project_id   Int?
+  name         String
+  storage_name String   @unique
+  size         Int
+  sha256       String
+  created_at   String   @default(dbgenerated("to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD HH24:MI:SS')"))
+  // I contenuti dei file vivevano su disco (data/documents): ora nel database.
+  content      Bytes
+  client       Client   @relation(fields: [client_id], references: [id])
+  project      Project? @relation(fields: [project_id], references: [id])
+  @@map("documents")
+}
+
+model Appointment {
+  id           Int      @id @default(autoincrement())
+  name         String
+  email        String
+  notes        String
+  start        String
+  end          String
+  status       String   @default("confirmed")
+  cancel_token String   @unique
+  created_at   String   @default(dbgenerated("to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD HH24:MI:SS')"))
+  @@map("appointments")
+}
+
+model Block {
+  id     Int    @id @default(autoincrement())
+  start  String
+  end    String
+  reason String
+  @@map("blocks")
+}
+
+model LoginAttempt {
+  ip    String @id
+  count Int
+  reset Float
+  @@map("login_attempts")
+}
