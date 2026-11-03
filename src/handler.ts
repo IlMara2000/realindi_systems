@@ -106,9 +106,9 @@ const MIME: Record<string, string> = {
   "site.js": "text/javascript; charset=utf-8",
   "style.css": "text/css; charset=utf-8",
   "site.css": "text/css; charset=utf-8",
-  "assets/logo.svg": "image/svg+xml",
-  "assets/favicon.svg": "image/svg+xml",
-  "assets/apple-touch-icon.png": "image/png",
+  "assets/brand-mark.svg": "image/svg+xml",
+  "assets/app-icon.svg": "image/svg+xml",
+  "assets/app-touch.png": "image/png",
 };
 
 const STATIC_FILES = new Set([
@@ -118,9 +118,9 @@ const STATIC_FILES = new Set([
   "/site.js",
   "/style.css",
   "/site.css",
-  "/assets/logo.svg",
-  "/assets/favicon.svg",
-  "/assets/apple-touch-icon.png",
+  "/assets/brand-mark.svg",
+  "/assets/app-icon.svg",
+  "/assets/app-touch.png",
 ]);
 
 function serveStatic(path: string): HandlerResponse | null {

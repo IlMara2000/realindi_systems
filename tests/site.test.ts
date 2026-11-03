@@ -94,17 +94,31 @@ describe("routing sito", () => {
     expect(css.text).toContain("--inset:");
   });
 
-  it("logo e favicon sono serviti dal sito e collegati nelle pagine", async () => {
-    const logo = await get("/assets/logo.svg");
+  it("marchio e icone sono serviti e collegati in tutte le pagine", async () => {
+    const logo = await get("/assets/brand-mark.svg");
     expect(logo.status).toBe(200);
     expect(logo.type).toContain("image/svg+xml");
-    const favicon = await get("/assets/favicon.svg");
-    expect(favicon.status).toBe(200);
-    expect(favicon.type).toContain("image/svg+xml");
+    // Il marchio è la R con il parallelogramma arancione, non un segnaposto.
+    expect(logo.text).toContain("#141418");
+    expect(logo.text).toContain("#ff6a1a");
+
+    const icon = await get("/assets/app-icon.svg");
+    expect(icon.status).toBe(200);
+    expect(icon.type).toContain("image/svg+xml");
+
+    const touch = await get("/assets/app-touch.png");
+    expect(touch.status).toBe(200);
+    expect(touch.type).toContain("image/png");
 
     for (const path of ["/", "/bio", "/app"]) {
       const page = await get(path);
-      expect(page.text).toContain('href="/assets/favicon.svg"');
+      expect(page.text).toContain('href="/assets/app-icon.svg"');
+      expect(page.text).toContain('href="/assets/app-touch.png"');
+    }
+
+    for (const path of ["/", "/bio"]) {
+      const page = await get(path);
+      expect(page.text).toContain('src="/assets/brand-mark.svg"');
     }
   });
 });
