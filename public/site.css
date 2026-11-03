@@ -6,18 +6,30 @@
    Nessuna risorsa esterna (CSP default-src 'self'). */
 
 :root {
-  --bg: #f7f5ef;
-  --paper: #fffdf8;
-  --ink: #16150f;
-  --muted: #5f6357;
-  --line: #ded9c9;
-  --green:#276247;
-  --lime:#d2ed98;
-  --sage: #d8e6d2;
-  --butter: #f7e8ae;
-  --clay: #f1cdb7;
-  --sky: #d3e2ed;
-  --lilac: #e3d9ef;
+  /* Marchio (logo in /assets/logo.svg): petrolio → terracotta → ocra.
+     Questi tre valori comandano l'intero sito: cambiarli qui riallinea
+     bottoni, link, evidenziatore, ticker, bande e card. */
+  --brand: #14504b;
+  --accent: #da6a4a;
+  /* Variante scura del secondario: solo per testo e frecce sopra i pastelli,
+     dove il terracotta pieno non arriverebbe al contrasto minimo. */
+  --accent-strong: #a3402a;
+  --highlight: #e9c46a;
+
+  --bg: #f3ede0;
+  --paper: #fbf7ee;
+  --ink: #14140f;
+  --muted: #5c6157;
+  --line: #dcd5c4;
+  /* Alias storici: puntano ai tre colori del marchio. */
+  --green: var(--brand);
+  --lime: var(--highlight);
+
+  --sage: #d5e4dc;
+  --butter: #f8ebc8;
+  --clay: #f7dfd2;
+  --sky: #d8e4ee;
+  --lilac: #e7dff1;
   --red: #a83c3c;
   --black: #12110d;
 
@@ -201,12 +213,24 @@ img {
 }
 
 .topstrip-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
   font-weight: 900;
   font-size: 1rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   text-decoration: none;
   color: var(--ink);
+}
+
+/* Marchio: il file è già bordato, quindi niente bordi aggiuntivi. */
+.logo-mark {
+  display: block;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  box-shadow: 3px 3px 0 var(--black);
 }
 
 .topstrip-nav {
@@ -371,6 +395,7 @@ img {
 .row-arrow {
   font-size: 1.5rem;
   font-weight: 900;
+  color: var(--accent-strong);
 }
 
 /* ---------------------------------------------------------- sezione split */
@@ -409,7 +434,7 @@ img {
   position: absolute;
   left: 0.85rem;
   font-weight: 900;
-  color: var(--green);
+  color: var(--accent-strong);
 }
 
 /* ----------------------------------------------------------------- cards */
@@ -453,7 +478,7 @@ img {
   font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.16em;
-  color: var(--ink);
+  color: var(--accent-strong);
   margin: 0 0 0.7rem;
 }
 
@@ -536,6 +561,14 @@ img {
   box-shadow: var(--shadow-hard);
   padding: clamp(1.5rem, 5vw, 2.25rem);
   text-align: center;
+}
+
+.bio-logo {
+  display: block;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 1rem;
+  box-shadow: var(--shadow-hard-sm);
 }
 
 .bio-card h1 {

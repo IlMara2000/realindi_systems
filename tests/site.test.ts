@@ -85,10 +85,27 @@ describe("routing sito", () => {
     expect(r.text).toContain('<script src="/site.js"></script>');
   });
 
-  it("site.css dichiara i token neo-brutalist", async () => {
+  it("site.css dichiara i tre colori del marchio e gli alias storici", async () => {
     const css = await get("/site.css");
-    expect(css.text).toContain("--green:#276247");
-    expect(css.text).toContain("--lime:#d2ed98");
+    expect(css.text).toContain("--brand: #14504b");
+    expect(css.text).toContain("--accent: #da6a4a");
+    expect(css.text).toContain("--highlight: #e9c46a");
+    expect(css.text).toContain("--green: var(--brand)");
+    expect(css.text).toContain("--lime: var(--highlight)");
+  });
+
+  it("logo e favicon sono serviti dal sito e collegati nelle pagine", async () => {
+    const logo = await get("/assets/logo.svg");
+    expect(logo.status).toBe(200);
+    expect(logo.type).toContain("image/svg+xml");
+    const favicon = await get("/assets/favicon.svg");
+    expect(favicon.status).toBe(200);
+    expect(favicon.type).toContain("image/svg+xml");
+
+    for (const path of ["/", "/bio", "/app"]) {
+      const page = await get(path);
+      expect(page.text).toContain('href="/assets/favicon.svg"');
+    }
   });
 });
 

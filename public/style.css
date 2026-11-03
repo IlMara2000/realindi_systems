@@ -1,11 +1,13 @@
 :root {
-  --bg: #f5f6f3;
-  --paper: #fff;
-  --ink: #20332d;
-  --muted: #6b7973;
-  --line: #e0e6df;
-  --green: #276247;
-  --lime: #d2ed98;
+  --bg: #f6f1e6;
+  --paper: #fffdf7;
+  --ink: #17201d;
+  --muted: #6a7369;
+  --line: #e2dbc9;
+  /* Marchio: petrolio (primario), terracotta (secondario), ocra (terziario). */
+  --green: #14504b;
+  --lime: #e9c46a;
+  --accent: #da6a4a;
   --red: #a83c3c;
   --radius: 14px;
   font-family:
@@ -58,7 +60,7 @@ button:disabled {
   cursor: wait;
 }
 :focus-visible {
-  outline: 3px solid #83b761;
+  outline: 3px solid #da6a4a;
   outline-offset: 3px;
 }
 button.primary,
@@ -93,8 +95,8 @@ button.primary,
   min-height: 100vh;
 }
 .sidebar {
-  background: #172d28;
-  color: #e2ece5;
+  background: #123c39;
+  color: #e6f0ec;
   padding: 32px 20px;
   position: sticky;
   top: 0;
@@ -112,27 +114,23 @@ button.primary,
   gap: 10px;
 }
 .brand-mark {
-  display: inline-flex;
+  display: block;
   width: 32px;
   height: 32px;
-  background: var(--lime);
-  color: #183329;
-  align-items: center;
-  justify-content: center;
-  border-radius: 9px;
-  font-size: 23px;
-  letter-spacing: 0;
+  flex: none;
+  border-radius: 8px;
+  object-fit: cover;
 }
 .brand-sub {
   font-size: 10px;
   letter-spacing: 3px;
   margin: 8px 0 40px 43px;
-  color: #a1b9ae;
+  color: #a7c2ba;
 }
 .nav-label {
   font-size: 10px;
   letter-spacing: 1.8px;
-  color: #8ca79b;
+  color: #90b0a7;
   margin: 0 12px 13px;
 }
 .nav {
@@ -143,19 +141,19 @@ button.primary,
 .nav a {
   padding: 12px 14px;
   border-radius: 8px;
-  color: #b7cbc0;
+  color: #b8cfc8;
   font-size: 13px;
   display: flex;
   gap: 13px;
   align-items: center;
 }
 .nav a:hover {
-  background: #243d33;
+  background: #1b4a46;
   text-decoration: none;
 }
 .nav a.active {
   background: var(--lime);
-  color: #193c2b;
+  color: #0f3d3a;
   font-weight: 650;
 }
 .nav svg {
@@ -172,14 +170,14 @@ button.primary,
   align-items: center;
   gap: 10px;
   margin-top: 24px;
-  border-top: 1px solid #355044;
+  border-top: 1px solid #2f5a55;
   padding: 23px 4px 0;
   font-size: 12px;
 }
 .avatar {
-  background: #ecf2e5;
+  background: #e6efeb;
   border-radius: 50%;
-  color: #376040;
+  color: #14504b;
   width: 36px;
   height: 36px;
   display: inline-flex;
@@ -189,12 +187,12 @@ button.primary,
   flex-shrink: 0;
 }
 .account .avatar {
-  background: #355547;
-  color: #d3e4c8;
+  background: #2a544f;
+  color: #dfe9df;
 }
 .account small {
   display: block;
-  color: #9bb7a7;
+  color: #9dbab1;
   margin-top: 4px;
 }
 .main {
@@ -202,7 +200,7 @@ button.primary,
 }
 .topbar {
   height: 80px;
-  background: #ffffffb0;
+  background: #fffdf7fffb0;
   border-bottom: 1px solid var(--line);
   padding: 0 38px;
   display: flex;
@@ -228,7 +226,7 @@ button.primary,
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #65964e;
+  background: #2f7d6f;
   display: inline-block;
   margin-right: 6px;
 }
@@ -315,8 +313,8 @@ p {
   font-size: 11px;
 }
 .metric.featured {
-  background: #eaf0e0;
-  border-color: #d8e3c8;
+  background: #e6f0ec;
+  border-color: #d2e1dc;
 }
 .grid-two {
   display: grid;
@@ -362,14 +360,14 @@ p {
   position: relative;
 }
 .bar {
-  background: #90b391;
+  background: #7fb3a8;
   border-radius: 5px 5px 0 0;
   width: 65%;
   min-height: 3px;
   max-height: 130px;
 }
 .chart-col:last-child .bar {
-  background: #315d44;
+  background: #14504b;
 }
 .chart-col small {
   position: absolute;
@@ -391,7 +389,7 @@ p {
   align-items: center;
   gap: 12px;
   padding: 17px 23px;
-  border-bottom: 1px solid #eef1eb;
+  border-bottom: 1px solid #efe9db;
 }
 .list-row:last-child {
   border-bottom: 0;
@@ -412,7 +410,7 @@ p {
   margin-top: 5px;
 }
 .date-tile {
-  background: #f1f4ec;
+  background: #f2ecdd;
   border-radius: 9px;
   min-width: 43px;
   padding: 8px;
@@ -432,21 +430,21 @@ p {
   font-size: 10px;
   font-weight: 600;
   padding: 5px 8px;
-  background: #edf0ed;
-  color: #63766a;
+  background: #efe9db;
+  color: #6a7369;
   white-space: nowrap;
 }
 .pill.active,
 .pill.accepted,
 .pill.paid,
 .pill.confirmed {
-  background: #e9f2df;
-  color: #416d31;
+  background: #e3efe9;
+  color: #14504b;
 }
 .pill.sent,
 .pill.issued,
 .pill.discovery {
-  background: #edf0fd;
+  background: #e8ecf6;
   color: #5f70aa;
 }
 .pill.rejected,
@@ -468,7 +466,7 @@ p {
   width: 28px;
   height: 28px;
   margin-bottom: 10px;
-  color: #92a68f;
+  color: #8aa79f;
 }
 .empty strong {
   display: block;
@@ -500,8 +498,8 @@ table {
 }
 th {
   padding: 12px 22px;
-  background: #fafbf8;
-  color: #849087;
+  background: #fdfaf2;
+  color: #8a8d7d;
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.65px;
@@ -509,7 +507,7 @@ th {
 }
 td {
   padding: 17px 22px;
-  border-top: 1px solid #edf0e9;
+  border-top: 1px solid #efe9db;
   font-size: 12px;
 }
 td strong {
@@ -528,12 +526,12 @@ td .actions {
   white-space: nowrap;
 }
 .callout {
-  border: 1px solid #dce6cf;
-  background: #f0f5e8;
+  border: 1px solid #cfe0da;
+  background: #eaf2ef;
   padding: 16px 20px;
   border-radius: 10px;
   font-size: 12px;
-  color: #596e4d;
+  color: #3a5a52;
   margin-bottom: 22px;
   line-height: 1.7;
 }
@@ -580,7 +578,7 @@ input,
 select,
 textarea {
   background: white;
-  border: 1px solid #d9e1d7;
+  border: 1px solid #ddd4bf;
   border-radius: 7px;
   width: 100%;
   padding: 10px 12px;
@@ -663,7 +661,7 @@ textarea {
   border-radius: 6px;
 }
 .totals {
-  background: #f5f7f1;
+  background: #f8f2e5;
   padding: 18px;
   border-radius: 10px;
   margin-top: 20px;
@@ -693,9 +691,9 @@ textarea {
   grid-template-columns: 1fr 1fr;
 }
 .auth-story {
-  background: #172d28;
+  background: #123c39;
   padding: 60px;
-  color: #dfebdd;
+  color: #e6f0ec;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -708,10 +706,10 @@ textarea {
 }
 .auth-story p {
   max-width: 400px;
-  color: #a3bcae;
+  color: #a7c2ba;
 }
 .auth-story small {
-  color: #8ba795;
+  color: #8fb0a7;
 }
 .auth-form {
   align-self: center;
@@ -746,7 +744,7 @@ dialog {
   color: var(--ink);
 }
 dialog::backdrop {
-  background: #14291e80;
+  background: #0c2f2c80;
   backdrop-filter: blur(3px);
 }
 .modal-header {
@@ -756,7 +754,7 @@ dialog::backdrop {
   margin-bottom: 24px;
 }
 .modal-close {
-  background: #f1f4ed;
+  background: #f2ecdd;
   border-radius: 50%;
   width: 30px;
   height: 30px;
@@ -767,11 +765,11 @@ dialog::backdrop {
   bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
-  background: #203f2e;
+  background: #0f3d3a;
   color: white;
   padding: 13px 20px;
   border-radius: 10px;
-  box-shadow: 0 8px 25px #15261c22;
+  box-shadow: 0 8px 25px #0c2b291f;
   z-index: 20;
   display: none;
   max-width: 90vw;
@@ -797,7 +795,7 @@ dialog::backdrop {
 }
 .booking-info {
   padding: 40px;
-  background: #eef3e7;
+  background: #e9f1ee;
   border-right: 1px solid var(--line);
 }
 .booking-info h1 {
@@ -815,7 +813,7 @@ dialog::backdrop {
   margin: 20px 0;
 }
 .slot {
-  border: 1px solid #cadabd;
+  border: 1px solid #c6d8d2;
   border-radius: 7px;
   padding: 12px;
   background: white;
@@ -832,7 +830,7 @@ dialog::backdrop {
   margin-top: 25px;
 }
 .link-box {
-  background: #f5f7f2;
+  background: #f8f2e5;
   padding: 12px;
   overflow-wrap: anywhere;
   border-radius: 7px;
@@ -854,7 +852,7 @@ dialog::backdrop {
   display: flex;
   justify-content: space-between;
   gap: 30px;
-  border-bottom: 2px solid #2d5842;
+  border-bottom: 2px solid #14504b;
   padding-bottom: 25px;
 }
 .print-doc address {
@@ -878,7 +876,7 @@ dialog::backdrop {
 .print-doc footer {
   font-size: 10px;
   line-height: 1.8;
-  color: #657267;
+  color: #66705f;
   border-top: 1px solid var(--line);
   margin-top: 35px;
   padding-top: 20px;
@@ -1179,18 +1177,18 @@ dialog::backdrop {
 }
 .note-card {
   background: white;
-  border: 2px solid #172d28;
+  border: 2px solid #123c39;
   border-radius: 12px;
   padding: 18px;
-  box-shadow: 4px 4px 0 #172d2824;
+  box-shadow: 4px 4px 0 #123c3924;
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 .note-card.pinned {
-  background: #fbf9ea;
+  background: #fbf3df;
   border-color: var(--green);
-  box-shadow: 4px 4px 0 #27624729;
+  box-shadow: 4px 4px 0 #14504b29;
 }
 .note-head {
   display: flex;
@@ -1229,7 +1227,7 @@ dialog::backdrop {
   margin: 0;
 }
 .provider-chip {
-  border: 1.5px solid #172d28;
+  border: 1.5px solid #123c39;
   background: white;
   border-radius: 999px;
   padding: 6px 12px;
@@ -1263,7 +1261,7 @@ dialog::backdrop {
   text-transform: capitalize;
 }
 .month-nav {
-  background: #f1f4ed;
+  background: #f2ecdd;
   width: 30px;
   height: 30px;
   border-radius: 8px;
@@ -1278,11 +1276,11 @@ dialog::backdrop {
   grid-template-columns: repeat(7, 1fr);
 }
 .month-grid .wd {
-  background: #fafbf8;
+  background: #fdfaf2;
   font-size: 10px;
   letter-spacing: 0.65px;
   text-transform: uppercase;
-  color: #849087;
+  color: #8a8d7d;
   text-align: center;
   padding: 10px 0;
   border-bottom: 1px solid var(--line);
@@ -1291,8 +1289,8 @@ dialog::backdrop {
 .day-cell {
   min-height: 92px;
   border: 0;
-  border-right: 1px solid #edf0e9;
-  border-bottom: 1px solid #edf0e9;
+  border-right: 1px solid #efe9db;
+  border-bottom: 1px solid #efe9db;
   background: white;
   text-align: left;
   padding: 7px;
@@ -1303,15 +1301,15 @@ dialog::backdrop {
   color: inherit;
 }
 .day-cell:hover {
-  background: #f6f8f3;
+  background: #f9f4e8;
 }
 .day-cell.other {
-  background: #fafbf8;
+  background: #fdfaf2;
 }
 .day-cell.selected {
   outline: 2px solid var(--green);
   outline-offset: -2px;
-  background: #f2f7ec;
+  background: #e7f0ec;
 }
 .day-num {
   font-size: 12px;
@@ -1328,8 +1326,8 @@ dialog::backdrop {
   color: white;
 }
 .event-chip {
-  background: #e9f2df;
-  color: #3c6a2c;
+  background: #e3efe9;
+  color: #14504b;
   border-radius: 5px;
   font-size: 10px;
   padding: 3px 5px;
