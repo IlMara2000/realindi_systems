@@ -52,6 +52,7 @@ import {
   removeApple,
 } from "./integrations.js";
 import { runSync } from "./sync.js";
+import { sendMail, validateOutgoing, readInbox } from "./email.js";
 
 export interface HandlerRequest {
   method: string;
@@ -246,6 +247,8 @@ async function handleGet(req: HandlerRequest): Promise<HandlerResponse> {
   }
 
   if (path === "/api/integrations/status") return send(await integrationStatus());
+
+  if (path === "/api/email/inbox") return send(await readInbox());
 
   if (path === "/api/integrations/google/connect") {
     return send({ url: await googleConnectUrl(originOf(req)) });
@@ -566,6 +569,17 @@ async function handlePost(req: HandlerRequest): Promise<HandlerResponse> {
 
   if (path === "/api/sync/calendar") {
     return send(await runSync());
+  }
+
+  if (path === "/api/email/send") {
+    const mail = validateOutgoing(d);
+    try {
+      await sendMail(mail);
+    } catch (err) {
+      if (err instanceof Invalid) throw err;
+      return sendError(502, "Invio email fallito: riprova più tardi.");
+    }
+    return send({ ok: true });
   }
 
   if (path === "/api/logout") {

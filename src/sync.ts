@@ -68,6 +68,7 @@ function sanitize(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
   return msg.replace(/https?:\/\/\S+/g, "[url]").slice(0, 200);
 }
+export { sanitize };
 
 /** Una voce per provider: il primo errore racconta il disservizio. */
 function addError(errors: Array<{ source: string; message: string }>, source: string, err: unknown): void {
@@ -93,7 +94,7 @@ class Conflict412 extends Error {
 
 // ------------------------------------------------------------- credenziali
 
-async function googleTokens(): Promise<{ access_token: string }> {
+export async function googleTokens(): Promise<{ access_token: string }> {
   const p = prisma();
   const row = await p.setting.findUnique({ where: { key: "int_google" } });
   if (!row) throw new Error("Google non collegato.");
@@ -149,7 +150,7 @@ interface AppleCreds {
   app_password: string;
 }
 
-async function appleCreds(): Promise<AppleCreds> {
+export async function appleCreds(): Promise<AppleCreds> {
   const row = await prisma().setting.findUnique({ where: { key: "int_apple" } });
   if (!row) throw new Error("Apple non collegato.");
   try {
