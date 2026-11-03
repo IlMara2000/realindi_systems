@@ -24,6 +24,12 @@ async function get(path: string) {
   return { status: res.status, text, type: res.headers.get("content-type") ?? "" };
 }
 
+async function getBytes(path: string) {
+  const res = await fetch(base + path);
+  const buf = new Uint8Array(await res.arrayBuffer());
+  return { status: res.status, buf, type: res.headers.get("content-type") ?? "" };
+}
+
 describe("routing sito", () => {
   it("/ serve il sito pubblico", async () => {
     const r = await get("/");
@@ -95,30 +101,29 @@ describe("routing sito", () => {
   });
 
   it("marchio e icone sono serviti e collegati in tutte le pagine", async () => {
-    const logo = await get("/assets/brand-mark.svg");
+    const logo = await getBytes("/assets/logo-realindi.png");
     expect(logo.status).toBe(200);
-    expect(logo.type).toContain("image/svg+xml");
-    // Il marchio è la R con il parallelogramma arancione, non un segnaposto.
-    expect(logo.text).toContain("#141418");
-    expect(logo.text).toContain("#ff6a1a");
+    expect(logo.type).toContain("image/png");
+    // PNG vero, non un segnaposto: firma del formato.
+    expect(Array.from(logo.buf.slice(0, 4))).toEqual([0x89, 0x50, 0x4e, 0x47]);
 
-    const icon = await get("/assets/app-icon.svg");
-    expect(icon.status).toBe(200);
-    expect(icon.type).toContain("image/svg+xml");
-
-    const touch = await get("/assets/app-touch.png");
-    expect(touch.status).toBe(200);
-    expect(touch.type).toContain("image/png");
+    for (const path of ["/assets/favicon-32.png", "/assets/favicon-192.png", "/assets/app-touch.png"]) {
+      const icon = await getBytes(path);
+      expect(icon.status).toBe(200);
+      expect(icon.type).toContain("image/png");
+      expect(icon.buf.length).toBeGreaterThan(100);
+    }
 
     for (const path of ["/", "/bio", "/app"]) {
       const page = await get(path);
-      expect(page.text).toContain('href="/assets/app-icon.svg"');
+      expect(page.text).toContain('href="/assets/favicon-32.png"');
+      expect(page.text).toContain('href="/assets/favicon-192.png"');
       expect(page.text).toContain('href="/assets/app-touch.png"');
     }
 
     for (const path of ["/", "/bio"]) {
       const page = await get(path);
-      expect(page.text).toContain('src="/assets/brand-mark.svg"');
+      expect(page.text).toContain('src="/assets/logo-realindi.png"');
     }
   });
 });

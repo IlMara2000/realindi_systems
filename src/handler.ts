@@ -106,8 +106,9 @@ const MIME: Record<string, string> = {
   "site.js": "text/javascript; charset=utf-8",
   "style.css": "text/css; charset=utf-8",
   "site.css": "text/css; charset=utf-8",
-  "assets/brand-mark.svg": "image/svg+xml",
-  "assets/app-icon.svg": "image/svg+xml",
+  "assets/logo-realindi.png": "image/png",
+  "assets/favicon-32.png": "image/png",
+  "assets/favicon-192.png": "image/png",
   "assets/app-touch.png": "image/png",
 };
 
@@ -118,8 +119,9 @@ const STATIC_FILES = new Set([
   "/site.js",
   "/style.css",
   "/site.css",
-  "/assets/brand-mark.svg",
-  "/assets/app-icon.svg",
+  "/assets/logo-realindi.png",
+  "/assets/favicon-32.png",
+  "/assets/favicon-192.png",
   "/assets/app-touch.png",
 ]);
 
