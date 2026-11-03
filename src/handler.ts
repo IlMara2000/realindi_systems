@@ -36,6 +36,13 @@ import {
   todayRome,
 } from "./util.js";
 import { calculate, estimate } from "./estimator.js";
+import {
+  listNotes,
+  validateNoteFields,
+  ensureReferencesExist,
+  intId,
+  utcStamp,
+} from "./notes.js";
 
 export interface HandlerRequest {
   method: string;
@@ -214,6 +221,8 @@ async function handleGet(req: HandlerRequest): Promise<HandlerResponse> {
   if (!(await auth(token))) return sendError(401, "Accedi per continuare.");
 
   if (path === "/api/estimates/catalog") return send(CATALOG);
+
+  if (path === "/api/notes") return send({ notes: await listNotes() });
 
   if (path === "/api/state") {
     const [clients, projects, quotes, invoices, documents, appointments, blocks] = await Promise.all([
@@ -427,6 +436,28 @@ async function handlePost(req: HandlerRequest): Promise<HandlerResponse> {
       update: { value },
       create: { key: "site_bio", value },
     });
+    return send({ ok: true });
+  }
+
+  if (path === "/api/notes") {
+    const fields = validateNoteFields(d);
+    await ensureReferencesExist(fields);
+    if (d.id === undefined) {
+      const created = await p.note.create({ data: fields });
+      return send({ id: created.id });
+    }
+    const id = intId(d.id);
+    const existing = await p.note.findUnique({ where: { id } });
+    if (!existing) return sendError(404, "Nota non trovata.");
+    await p.note.update({ where: { id }, data: { ...fields, updated_at: utcStamp() } });
+    return send({ ok: true });
+  }
+
+  if (path === "/api/notes/delete") {
+    const id = intId(d.id);
+    const existing = await p.note.findUnique({ where: { id } });
+    if (!existing) return sendError(404, "Nota non trovata.");
+    await p.note.delete({ where: { id } });
     return send({ ok: true });
   }
 
