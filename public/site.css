@@ -1,31 +1,38 @@
 /* REALINDI SYSTEMS — sito pubblico + link in bio.
-   Stile: neumorfismo misto a brutalismo.
-   - Struttura/CTA brutalista: bordi neri 2px, ombre dure senza blur, press al click.
-   - Pannelli neumorfici: doppia ombra chiara/scura sullo stesso tono di fondo.
+   Stile: brutalismo con pastelli morbidi.
+   - Struttura/CTA brutaliste: bordi neri spessi, ombre dure senza blur, angoli
+     quasi vivi, blocchi di colore pieno, tiratura tipo manifesto.
+   - I colori sono desaturati e chiari: fanno rumore senza stancare l'occhio.
    Nessuna risorsa esterna (CSP default-src 'self'). */
 
 :root {
-  --bg: #f5f6f3;
-  --paper: #fff;
-  --ink: #20332d;
-  --muted: #6b7973;
-  --line: #e0e6df;
+  --bg: #f7f5ef;
+  --paper: #fffdf8;
+  --ink: #16150f;
+  --muted: #5f6357;
+  --line: #ded9c9;
   --green:#276247;
   --lime:#d2ed98;
+  --sage: #d8e6d2;
+  --butter: #f7e8ae;
+  --clay: #f1cdb7;
+  --sky: #d3e2ed;
+  --lilac: #e3d9ef;
   --red: #a83c3c;
-  --black: #111;
+  --black: #12110d;
 
-  --border: 2px solid var(--black);
-  --shadow-hard: 6px 6px 0 var(--black);
-  --shadow-hard-sm: 4px 4px 0 var(--black);
+  --border: 3px solid var(--black);
+  --border-thin: 2px solid var(--black);
+  --shadow-hard: 8px 8px 0 var(--black);
+  --shadow-hard-sm: 5px 5px 0 var(--black);
   --shadow-neo: -6px -6px 12px rgba(255, 255, 255, 0.75), 6px 6px 12px rgba(0, 0, 0, 0.08);
   --shadow-neo-inset: inset 3px 3px 8px rgba(0, 0, 0, 0.12), inset -3px -3px 8px rgba(255, 255, 255, 0.8);
 
   --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  --radius: 14px;
-  --radius-sm: 10px;
+  --radius: 2px;
+  --radius-sm: 2px;
 
   font-family: var(--font-sans);
   color: var(--ink);
@@ -42,13 +49,19 @@ body {
   margin: 0;
   font-size: 16px;
   line-height: 1.55;
+  /* Carta millimetrata: struttura visibile, contrasto bassissimo. */
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(to right, rgba(18, 17, 13, 0.055) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(18, 17, 13, 0.055) 1px, transparent 1px);
+  background-size: 34px 34px;
 }
 
 h1,
 h2,
 h3 {
-  line-height: 1.05;
-  letter-spacing: -0.02em;
+  line-height: 1;
+  letter-spacing: -0.03em;
   margin: 0 0 0.4em;
 }
 
@@ -76,18 +89,55 @@ img {
 
 :focus-visible {
   outline: 3px solid var(--green);
-  outline-offset: 2px;
+  outline-offset: 3px;
+}
+
+/* ------------------------------------------------------------------ ticker */
+.ticker {
+  overflow: hidden;
+  background: var(--black);
+  color: var(--lime);
+  border-bottom: var(--border);
+  padding: 0.4rem 0;
+}
+
+.ticker-track {
+  display: flex;
+  gap: 2rem;
+  width: max-content;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  animation: ticker-scroll 42s linear infinite;
+}
+
+.ticker-track span {
+  padding-right: 2rem;
+}
+
+@keyframes ticker-scroll {
+  to {
+    transform: translateX(-50%);
+  }
 }
 
 /* ---------------------------------------------------------------- etichette */
 .label {
+  display: inline-block;
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--green);
-  margin: 0 0 1rem;
+  color: var(--ink);
+  background: var(--paper);
+  border: var(--border-thin);
+  box-shadow: 3px 3px 0 var(--black);
+  padding: 0.28rem 0.6rem;
+  margin: 0 0 1.15rem;
 }
 
 /* ----------------------------------------------------------------- pulsanti */
@@ -96,14 +146,14 @@ img {
   font-family: var(--font-sans);
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
-  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  font-size: 0.88rem;
   text-decoration: none;
   color: var(--black);
   background: var(--paper);
   border: var(--border);
   border-radius: var(--radius-sm);
-  padding: 0.85rem 1.4rem;
+  padding: 0.85rem 1.35rem;
   box-shadow: var(--shadow-hard-sm);
   cursor: pointer;
   transition: transform 0.12s ease, box-shadow 0.12s ease;
@@ -111,11 +161,11 @@ img {
 
 .btn:hover {
   transform: translate(2px, 2px);
-  box-shadow: 2px 2px 0 var(--black);
+  box-shadow: 3px 3px 0 var(--black);
 }
 
 .btn:active {
-  transform: translate(4px, 4px);
+  transform: translate(5px, 5px);
   box-shadow: 0 0 0 var(--black);
 }
 
@@ -129,31 +179,32 @@ img {
 }
 
 .btn-ghost {
-  background: transparent;
+  background: var(--paper);
 }
 
 .btn-sm {
   padding: 0.45rem 0.9rem;
-  font-size: 0.8rem;
+  font-size: 0.76rem;
   box-shadow: 3px 3px 0 var(--black);
 }
 
-/* ------------------------------------------------------------- top strip */
+/* ------------------------------------------------------------- barra superiore */
 .topstrip {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
   align-items: center;
   justify-content: space-between;
-  padding: 0.9rem clamp(1rem, 4vw, 2.5rem);
+  padding: 0.85rem clamp(1rem, 4vw, 2.5rem);
   background: var(--paper);
   border-bottom: var(--border);
 }
 
 .topstrip-brand {
   font-weight: 900;
+  font-size: 1rem;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-decoration: none;
   color: var(--ink);
 }
@@ -166,10 +217,10 @@ img {
 
 .topstrip-nav a:not(.btn) {
   font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-decoration: none;
   color: var(--ink);
   border-bottom: 2px solid transparent;
@@ -177,6 +228,36 @@ img {
 
 .topstrip-nav a:not(.btn):hover {
   border-bottom-color: var(--black);
+}
+
+/* ------------------------------------------------------ bande di colore piene */
+.band {
+  border-top: var(--border);
+  border-bottom: var(--border);
+}
+
+.band + .band {
+  border-top: 0;
+}
+
+.band-sage {
+  background: var(--sage);
+}
+
+.band-sky {
+  background: var(--sky);
+}
+
+.band-butter {
+  background: var(--butter);
+}
+
+.band-clay {
+  background: var(--clay);
+}
+
+.band-paper {
+  background: var(--paper);
 }
 
 /* -------------------------------------------------------------- sezioni */
@@ -187,48 +268,62 @@ img {
 }
 
 .sec-title {
-  font-size: clamp(1.8rem, 5vw, 3rem);
+  font-size: clamp(1.9rem, 5.5vw, 3.3rem);
   font-weight: 900;
   text-transform: uppercase;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.4rem;
 }
 
 .section-text {
-  max-width: 60ch;
+  max-width: 62ch;
   color: var(--ink);
 }
 
-.section-text p + p {
-  margin-top: 1rem;
+.section-text p {
+  margin: 0 0 1rem;
+}
+
+.section-text p:last-child {
+  margin-bottom: 0;
 }
 
 /* ----------------------------------------------------------------- hero */
 .hero {
-  padding-top: clamp(3rem, 9vw, 6rem);
+  padding-top: clamp(2.5rem, 8vw, 5rem);
 }
 
 .hero h1 {
-  font-size: clamp(2.4rem, 8vw, 5rem);
+  font-size: clamp(1.75rem, 7.4vw, 5.4rem);
   font-weight: 900;
   text-transform: uppercase;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.045em;
+  text-wrap: balance;
+}
+
+.hero h1 em {
+  font-style: normal;
+  background: var(--lime);
+  border: var(--border);
+  box-shadow: var(--shadow-hard-sm);
+  padding: 0 0.25em;
+  display: inline-block;
 }
 
 .hero-lead {
-  font-size: clamp(1rem, 2.2vw, 1.25rem);
-  max-width: 55ch;
-  color: var(--muted);
-  margin: 1.25rem 0 2rem;
+  font-size: clamp(1rem, 2.2vw, 1.22rem);
+  max-width: 58ch;
+  color: var(--ink);
+  margin: 1.4rem 0 0;
 }
 
 .hero-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 1rem;
-  margin-top: 1.5rem;
+  margin-top: 2rem;
 }
 
-/* ------------------------------------------------ righe numerate servizi */
+/* ------------------------------------------------- servizi: righe numerate */
 .rows {
   list-style: none;
   margin: 0;
@@ -241,34 +336,36 @@ img {
   grid-template-columns: auto 1fr auto;
   gap: clamp(1rem, 4vw, 2.5rem);
   align-items: center;
-  padding: clamp(1.1rem, 3vw, 1.75rem) 0.25rem;
+  padding: clamp(1.1rem, 3vw, 1.7rem) 0.4rem;
   border-bottom: var(--border);
-  background: transparent;
   transition: background 0.15s ease, padding-left 0.15s ease;
 }
 
 .row:hover {
-  background: var(--lime);
-  padding-left: 1rem;
+  background: var(--butter);
+  padding-left: 1.1rem;
 }
 
 .row-num {
   font-family: var(--font-mono);
-  font-size: clamp(1.4rem, 4vw, 2.2rem);
+  font-size: clamp(1.3rem, 4vw, 2rem);
   font-weight: 700;
   color: var(--green);
+  background: var(--paper);
+  border: var(--border-thin);
+  padding: 0 0.5rem;
 }
 
 .row-body h3 {
-  font-size: clamp(1.2rem, 3vw, 1.7rem);
+  font-size: clamp(1.15rem, 3vw, 1.65rem);
   font-weight: 900;
   text-transform: uppercase;
 }
 
 .row-body p {
   margin: 0;
-  color: var(--muted);
-  max-width: 60ch;
+  color: var(--ink);
+  max-width: 62ch;
 }
 
 .row-arrow {
@@ -282,11 +379,37 @@ img {
   gap: clamp(1.5rem, 4vw, 3rem);
 }
 
-@media (min-width: 860px) {
+@media (min-width: 900px) {
   .section-split {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 0.85fr 1.15fr;
     align-items: start;
   }
+}
+
+/* ---------------------------------------------------- elenco "come lavoro" */
+.facts {
+  list-style: none;
+  margin: 2rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.facts li {
+  position: relative;
+  padding: 0.7rem 0.9rem 0.7rem 2.4rem;
+  background: var(--paper);
+  border: var(--border-thin);
+  box-shadow: 4px 4px 0 var(--black);
+  font-size: 0.95rem;
+}
+
+.facts li::before {
+  content: "→";
+  position: absolute;
+  left: 0.85rem;
+  font-weight: 900;
+  color: var(--green);
 }
 
 /* ----------------------------------------------------------------- cards */
@@ -295,10 +418,10 @@ img {
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 1.5rem;
+  gap: 1.6rem;
 }
 
-@media (min-width: 720px) {
+@media (min-width: 760px) {
   .cards {
     grid-template-columns: repeat(3, 1fr);
   }
@@ -309,42 +432,48 @@ img {
   border: var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow-hard);
-  padding: 1.5rem;
+  padding: 1.5rem 1.4rem;
+}
+
+.card:nth-child(1) {
+  background: var(--sage);
+}
+
+.card:nth-child(2) {
+  background: var(--lilac);
+  box-shadow: 8px 8px 0 var(--black);
+}
+
+.card:nth-child(3) {
+  background: var(--clay);
 }
 
 .card-kicker {
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 700;
-  letter-spacing: 0.14em;
-  color: var(--green);
-  margin: 0 0 0.75rem;
+  letter-spacing: 0.16em;
+  color: var(--ink);
+  margin: 0 0 0.7rem;
 }
 
 .card h3 {
-  font-size: 1.25rem;
+  font-size: 1.2rem;
   font-weight: 900;
   text-transform: uppercase;
 }
 
 .card p:last-child {
   margin-bottom: 0;
-  color: var(--muted);
+  color: var(--ink);
 }
 
-/* ------------------------------------------------------- pannello neumorfico */
-.section-neo {
-  background: var(--bg);
-  border-top: var(--border);
-  border-bottom: var(--border);
-}
-
-.section-neo .label {
-  color: var(--green);
-}
-
-.section-neo > * {
-  position: relative;
+/* ------------------------------------------------------- blocco contatti */
+.contact-card {
+  background: var(--paper);
+  border: var(--border);
+  box-shadow: var(--shadow-hard);
+  padding: clamp(1.4rem, 4vw, 2.4rem);
 }
 
 /* ---------------------------------------------------------------- footer */
@@ -357,13 +486,15 @@ img {
   padding: 1.5rem clamp(1rem, 4vw, 2.5rem);
   background: var(--black);
   color: var(--paper);
+  border-top: var(--border);
 }
 
 .footer-brand {
   margin: 0;
   font-family: var(--font-mono);
-  font-size: 0.8rem;
-  letter-spacing: 0.08em;
+  font-size: 0.78rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
 .footer nav {
@@ -374,9 +505,9 @@ img {
 .footer a {
   color: var(--lime);
   font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-decoration: none;
   border-bottom: 1px solid transparent;
 }
@@ -399,7 +530,7 @@ img {
 }
 
 .bio-card {
-  background: var(--paper);
+  background: var(--butter);
   border: var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow-hard);
@@ -411,13 +542,15 @@ img {
   font-size: clamp(1.7rem, 7vw, 2.4rem);
   font-weight: 900;
   text-transform: uppercase;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
 }
 
 .bio-tagline {
   margin: 0;
-  color: var(--muted);
+  color: var(--ink);
   font-size: 0.98rem;
+  max-width: 32ch;
+  margin-inline: auto;
 }
 
 .bio-tagline:empty {
@@ -426,7 +559,7 @@ img {
 
 #bio-links {
   display: grid;
-  gap: 0.9rem;
+  gap: 0.85rem;
   margin-top: 1.5rem;
 }
 
@@ -436,6 +569,9 @@ img {
   text-decoration: none;
   color: var(--ink);
   font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-size: 0.92rem;
   background: var(--paper);
   border: var(--border);
   border-radius: var(--radius-sm);
@@ -444,34 +580,46 @@ img {
   transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
 }
 
-.bio-link:hover {
+.bio-link:nth-child(3n + 1):hover {
   background: var(--lime);
+}
+
+.bio-link:nth-child(3n + 2):hover {
+  background: var(--sage);
+}
+
+.bio-link:nth-child(3n):hover {
+  background: var(--sky);
+}
+
+.bio-link:hover {
   transform: translate(2px, 2px);
-  box-shadow: 2px 2px 0 var(--black);
+  box-shadow: 3px 3px 0 var(--black);
 }
 
 .bio-link:active {
-  transform: translate(4px, 4px);
+  transform: translate(5px, 5px);
   box-shadow: 0 0 0 var(--black);
 }
 
 .bio-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.9rem;
+  gap: 0.85rem;
 }
 
 .bio-row .bio-link {
   padding: 0.85rem 0.5rem;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
 }
 
 .bio-empty {
   text-align: center;
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   background: var(--paper);
+  border: var(--border-thin);
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-neo-inset);
   padding: 1.25rem;
@@ -487,7 +635,7 @@ img {
 
 #bio-feedback {
   font-family: var(--font-mono);
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   color: var(--green);
   min-height: 1em;
 }
@@ -496,7 +644,7 @@ img {
   text-align: center;
   margin-top: 1.75rem;
   font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
 }
 
 .bio-back a {
