@@ -88,7 +88,8 @@ let state,
   selectedDay = today(),
   eventsCache = [],
   eventsFrom = "",
-  eventsTo = "";
+  eventsTo = "",
+  pendingToast = "";
 async function api(url, data) {
   const res = await fetch(url, {
     credentials: "same-origin",
@@ -205,6 +206,11 @@ function render() {
   $("#root").innerHTML =
     `<div class="shell"><aside class="sidebar"><a class="brand" href="#dashboard"><span class="brand-mark">r</span> REALINDI</a><div class="brand-sub">FREELANCER WORKSPACE</div><div class="nav-label">WORKSPACE</div><nav class="nav" aria-label="Menu principale">${["dashboard", "clients", "projects", "quotes", "invoices", "documents", "calendar", "planner", "notes", "settings"].map((k) => `<a href="#${k}" class="${route === k ? "active" : ""}" ${route === k ? 'aria-current="page"' : ""}>${icon(k)}${labels[k]}</a>`).join("")}</nav><div class="sidebar-bottom"><div class="nav-label">IL TUO BUSINESS, IN ORDINE.</div><div class="account"><span class="avatar">${esc((state.settings.owner_name || "RS").slice(0, 2).toUpperCase())}</span><div>${esc(state.settings.owner_name || "Il tuo workspace")}<small>Consulente indipendente</small></div></div></div></aside><main class="main"><header class="topbar"><div class="crumb">Workspace <span>/ &nbsp; ${labels[route]}</span></div><div class="top-right"><span class="local-status"><i class="status-dot"></i>Archivio locale</span>${btn("Esci", "logout", "", "secondary small")}</div></header><div class="content" id="content"></div></main></div>`;
   renderContent();
+  if (pendingToast) {
+    const t = pendingToast;
+    pendingToast = "";
+    toast(t);
+  }
 }
 function renderContent() {
   const views = {
@@ -749,7 +755,7 @@ function planner() {
     `<div class="grid-two"><section class="panel"><div class="panel-head"><div class="month-head"><button type="button" class="month-nav" data-action="month-prev" aria-label="Mese precedente">‹</button><h2>${monthLabel}</h2><button type="button" class="month-nav" data-action="month-next" aria-label="Mese successivo">›</button></div>${btn("Oggi", "month-today", "", "secondary small")}</div><div class="month-grid">${["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"]
       .map((w) => `<div class="wd">${w}</div>`)
       .join("")}${cells.join("")}</div></section>` +
-    `<section class="panel"><div class="panel-head"><h2 style="text-transform:capitalize">${esc(selectedLabel)}</h2>${btn("+ Evento", "new-event", selectedDay, "secondary small")}</div><div class="panel-body">${
+    `<section class="panel"><div class="panel-head"><h2 class="day-title">${esc(selectedLabel)}</h2>${btn("+ Evento", "new-event", selectedDay, "secondary small")}</div><div class="panel-body">${
       dayEvents.length
         ? dayEvents
             .map(
@@ -775,14 +781,118 @@ function planner() {
     )
   );
 }
+function linkRow(l = {}) {
+  const sections = [
+    ["main", "Principale"],
+    ["socials", "Social"],
+    ["contacts", "Contatti"],
+  ];
+  return `<div class="link-row" data-id="${esc(l.id || "")}"><input name="link_label" type="text" placeholder="Titolo" value="${esc(
+    l.label || "",
+  )}" maxlength="80" aria-label="Titolo link"><input name="link_url" type="url" placeholder="https://…" value="${esc(
+    l.url || "",
+  )}" maxlength="500" aria-label="URL link"><select name="link_section" aria-label="Sezione">${sections
+    .map(
+      ([v, t]) =>
+        `<option value="${v}" ${(l.section || "main") === v ? "selected" : ""}>${t}</option>`,
+    )
+    .join("")}</select><label class="link-vis"><input name="link_visible" type="checkbox" ${
+      l.visible === false ? "" : "checked"
+    }> visibile</label><div class="link-tools">${btn("↑", "link-up", "", "secondary small")}${btn(
+      "↓",
+      "link-down",
+      "",
+      "secondary small",
+    )}${btn("×", "link-remove", "", "secondary small danger")}</div></div>`;
+}
 function settingsView() {
   const s = state.settings;
+  const bio = state.bio || { tagline: "", links: [] };
+  const integ = state.integrations || { google: {}, apple: {} };
+  const chip = (cls, text) => `<span class="provider-chip ${cls}">${text}</span>`;
+  const integChips = `<div class="sync-row">${chip(
+    integ.google.connected ? "on" : "off",
+    `Google ${integ.google.connected ? (integ.google.needs_reauth ? "· riautentica" : "· collegato") : "· non collegato"}`,
+  )}${chip(
+    integ.apple.connected ? "on" : "off",
+    `Apple ${integ.apple.connected ? "· collegato" : "· non collegato"}`,
+  )}<span class="hint">${
+    integ.sender
+      ? "Mittente email: " + esc(integ.sender)
+      : "Nessun mittente email configurato."
+  }</span></div>${
+    integ.key_configured === false
+      ? '<div class="callout"><strong>Configurazione mancante</strong><br>La variabile INTEGRATIONS_KEY non è presente nel file .env: le integrazioni restano disattivate finché non la aggiungi.</div>'
+      : ""
+  }`;
+  const googleBlock = `<div class="section-gap"><h3>Google Calendar e Gmail</h3><p class="subtitle">${
+    integ.google.connected
+      ? "Sincronizzazione calendario attiva e inbox Gmail disponibile."
+      : "Consente la sincronizzazione del calendario e la lettura dell'inbox Gmail."
+  }</p><div class="actions">${btn(
+    integ.google.needs_reauth ? "Riconnetti Google" : "Collega Google",
+    "google-connect",
+    "",
+    "primary",
+  )}</div><p class="hint">Ti verrà chiesto di autorizzare Calendar e Gmail (sola lettura per l'inbox). L'invio delle email avviene solo tramite Apple.</p></div>`;
+  const appleBlock = `<div class="section-gap"><h3>Apple (iCloud)</h3><form id="apple-form" class="form-grid">${field(
+    "Apple ID",
+    "apple_id",
+    "email",
+    "",
+    'placeholder="nome@icloud.com" autocomplete="username"',
+  )}${field(
+    "Password specifica per le app",
+    "app_password",
+    "password",
+    "",
+    `placeholder="${
+      integ.apple.connected
+        ? "Già salvata — per cambiarla inseriscine una nuova"
+        : "xxxx-xxxx-xxxx-xxxx"
+    }" autocomplete="new-password"`,
+  )}${field(
+    "Mittente email",
+    "sender_email",
+    "email",
+    integ.sender || s.email || "",
+    'placeholder="nome@icloud.com"',
+  )}<div class="error" role="alert"></div><div class="form-actions"><button class="primary" type="submit">Salva collegamento Apple</button></div></form>${
+    integ.apple.connected
+      ? `<div class="actions section-gap">${btn("Disconnetti Apple", "apple-disconnect", "", "secondary small danger")}</div>`
+      : ""
+  }<p class="hint">Crea la password per le app su account.apple.com → Accesso e sicurezza. Serve per SMTP (invio) e IMAP (lettura) di iCloud; la password non viene mai riletta dal server.</p></div>`;
   return (
     title(
       "Un workspace che ti somiglia.",
       "Dati attività, parametri economici e disponibilità.",
     ) +
-    `<form id="settings-form"><div class="settings-grid">${panel("Attività e fatturazione", `<div class="panel-body form-grid">${field("Nome attività", "business_name", "text", s.business_name, "required")}${field("Il tuo nome", "owner_name", "text", s.owner_name)}${field("Email attività", "email", "email", s.email)}${field("Partita IVA", "vat_number", "text", s.vat_number)}${field("Codice fiscale", "tax_code", "text", s.tax_code)}${field("IBAN", "iban", "text", s.iban)}${area("Indirizzo completo", "address", s.address)}${field("Dicitura aggiuntiva", "tax_label", "text", s.tax_label)}${field("IVA indicativa preventivi (%)", "vat_rate", "number", s.vat_rate, 'min="0" max="100" step="0.01" required')}${field("Tariffa oraria (€)", "hourly_rate", "number", s.hourly_rate, 'min="0" step="0.01" required')}<p class="hint">Partita IVA senza prefisso paese. Completa il profilo fiscale aziendale qui sotto: ogni fattura richiederà una verifica dedicata.</p></div>`)}${panel("Pagina di prenotazione", `<div class="panel-body form-grid">${field("Titolo dell’incontro", "booking_title", "text", s.booking_title, "required")}${field("Durata (minuti)", "booking_duration", "number", s.booking_duration, 'min="15" max="180" required')}${area("Presentazione", "booking_description", s.booking_description)}${field("Disponibile dalle (ora)", "booking_start", "number", s.booking_start, 'min="0" max="23" required')}${field("Alle (ora)", "booking_end", "number", s.booking_end, 'min="1" max="23" required')}${field("Preavviso minimo (ore)", "booking_notice", "number", s.booking_notice, 'min="0" max="720" required')}${field("Prenotabile entro (giorni)", "booking_horizon", "number", s.booking_horizon, 'min="1" max="180" required')}${field("Indirizzo pubblico (HTTPS)", "public_url", "url", s.public_url, 'placeholder="https://prenotazioni.esempio.it"')}<p class="hint">Indirizzo su cui i clienti aprono le prenotazioni, solo dominio senza percorso. Vuoto: il link usa l'indirizzo da cui stai navigando. «Pubblica prenotazioni.command» lo imposta automaticamente quando avvia il tunnel.</p><div class="field full"><label>Giorni disponibili · Europe/Rome</label><div class="check-row">${["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"].map((t, i) => `<label><input type="checkbox" name="day" value="${i}" ${s.booking_days.includes(i) ? "checked" : ""}>${t}</label>`).join("")}</div></div><div class="field full check-row"><label><input type="checkbox" name="booking_enabled" ${s.booking_enabled ? "checked" : ""}>Accetta nuove prenotazioni</label></div></div>`)}</div>${fiscalSettings(s)}<div class="error" role="alert"></div><div class="form-actions"><button class="primary" type="submit">Salva impostazioni</button></div></form><div class="section-gap">${panel("I tuoi dati restano tuoi", `<div class="panel-body"><p class="subtitle">Esporta database e documenti in un archivio ZIP. Il backup contiene dati personali: conservalo in un luogo protetto.</p><div class="section-gap"><a class="button" href="/api/backup">Scarica backup completo ↓</a></div><p class="hint">Il ripristino è disponibile con lo strumento manage.py incluso nel progetto.</p></div>`)}</div>`
+    `<form id="settings-form"><div class="settings-grid">${panel("Attività e fatturazione", `<div class="panel-body form-grid">${field("Nome attività", "business_name", "text", s.business_name, "required")}${field("Il tuo nome", "owner_name", "text", s.owner_name)}${field("Email attività", "email", "email", s.email)}${field("Partita IVA", "vat_number", "text", s.vat_number)}${field("Codice fiscale", "tax_code", "text", s.tax_code)}${field("IBAN", "iban", "text", s.iban)}${area("Indirizzo completo", "address", s.address)}${field("Dicitura aggiuntiva", "tax_label", "text", s.tax_label)}${field("IVA indicativa preventivi (%)", "vat_rate", "number", s.vat_rate, 'min="0" max="100" step="0.01" required')}${field("Tariffa oraria (€)", "hourly_rate", "number", s.hourly_rate, 'min="0" step="0.01" required')}<p class="hint">Partita IVA senza prefisso paese. Completa il profilo fiscale aziendale qui sotto: ogni fattura richiederà una verifica dedicata.</p></div>`)}${panel("Pagina di prenotazione", `<div class="panel-body form-grid">${field("Titolo dell’incontro", "booking_title", "text", s.booking_title, "required")}${field("Durata (minuti)", "booking_duration", "number", s.booking_duration, 'min="15" max="180" required')}${area("Presentazione", "booking_description", s.booking_description)}${field("Disponibile dalle (ora)", "booking_start", "number", s.booking_start, 'min="0" max="23" required')}${field("Alle (ora)", "booking_end", "number", s.booking_end, 'min="1" max="23" required')}${field("Preavviso minimo (ore)", "booking_notice", "number", s.booking_notice, 'min="0" max="720" required')}${field("Prenotabile entro (giorni)", "booking_horizon", "number", s.booking_horizon, 'min="1" max="180" required')}${field("Indirizzo pubblico (HTTPS)", "public_url", "url", s.public_url, 'placeholder="https://prenotazioni.esempio.it"')}<p class="hint">Indirizzo su cui i clienti aprono le prenotazioni, solo dominio senza percorso. Vuoto: il link usa l'indirizzo da cui stai navigando. «Pubblica prenotazioni.command» lo imposta automaticamente quando avvia il tunnel.</p><div class="field full"><label>Giorni disponibili · Europe/Rome</label><div class="check-row">${["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"].map((t, i) => `<label><input type="checkbox" name="day" value="${i}" ${s.booking_days.includes(i) ? "checked" : ""}>${t}</label>`).join("")}</div></div><div class="field full check-row"><label><input type="checkbox" name="booking_enabled" ${s.booking_enabled ? "checked" : ""}>Accetta nuove prenotazioni</label></div></div>`)}</div>${fiscalSettings(s)}<div class="error" role="alert"></div><div class="form-actions"><button class="primary" type="submit">Salva impostazioni</button></div></form><div class="section-gap">${panel("I tuoi dati restano tuoi", `<div class="panel-body"><p class="subtitle">Esporta database e documenti in un archivio ZIP. Il backup contiene dati personali: conservalo in un luogo protetto.</p><div class="section-gap"><a class="button" href="/api/backup">Scarica backup completo ↓</a></div><p class="hint">Il ripristino è disponibile con lo strumento manage.py incluso nel progetto.</p></div>`)}</div><div class="section-gap">${panel(
+      "Integrazioni",
+      `<div class="panel-body">${integChips}${googleBlock}${appleBlock}</div>`,
+    )}</div><div class="section-gap">${panel(
+      "Sito &amp; Bio",
+      `<form id="site-form"><div class="panel-body form-grid">${field(
+        "Tagline",
+        "tagline",
+        "text",
+        bio.tagline,
+        'maxlength="300"',
+      )}${field(
+        "Link di prenotazione",
+        "booking_path",
+        "text",
+        bookingUrl(),
+        "readonly",
+      )}<div class="field full"><label>Link in evidenza</label><div id="bio-links">${bio.links
+        .map(linkRow)
+        .join("")}</div><div class="section-gap">${btn(
+        "+ Aggiungi link",
+        "link-add",
+        "",
+        "secondary small",
+      )}</div><p class="hint">Titolo, URL (http/https), sezione e visibilità. L'ordine delle righe è l'ordine sul sito.</p></div></div><div class="error" role="alert"></div><div class="form-actions"><a class="secondary" href="/bio" target="_blank" rel="noopener">Anteprima /bio ↗</a><button class="primary" type="submit">Salva sito e bio</button></div></form>`,
+    )}</div>`
   );
 }
 function bindView() {
@@ -819,6 +929,53 @@ function bindView() {
         toast("Impostazioni salvate.");
       } catch (e) {
         $(".error", f).textContent = e.message;
+      } finally {
+        b.disabled = false;
+      }
+    };
+  if ($("#apple-form"))
+    $("#apple-form").onsubmit = async (e) => {
+      e.preventDefault();
+      const f = e.target,
+        d = Object.fromEntries(new FormData(f));
+      const b = $("[type=submit]", f);
+      b.disabled = true;
+      $(".error", f).textContent = "";
+      try {
+        await api("/api/integrations/apple", d);
+        await refresh();
+        toast("Collegamento Apple salvato.");
+      } catch (err) {
+        $(".error", f).textContent = err.message;
+      } finally {
+        b.disabled = false;
+      }
+    };
+  if ($("#site-form"))
+    $("#site-form").onsubmit = async (e) => {
+      e.preventDefault();
+      const f = e.target;
+      const links = $$(".link-row", f)
+        .map((row) => ({
+          id: row.dataset.id || undefined,
+          label: $("[name=link_label]", row).value.trim(),
+          url: $("[name=link_url]", row).value.trim(),
+          section: $("[name=link_section]", row).value,
+          visible: $("[name=link_visible]", row).checked,
+        }))
+        .filter((l) => l.label && l.url)
+        .map((l, i) => ({ ...l, order: i }));
+      const b = $("[type=submit]", f);
+      b.disabled = true;
+      $(".error", f).textContent = "";
+      try {
+        await api("/api/site", {
+          bio: { tagline: f.tagline.value.trim(), links },
+        });
+        await refresh();
+        toast("Sito e bio aggiornati.");
+      } catch (err) {
+        $(".error", f).textContent = err.message;
       } finally {
         b.disabled = false;
       }
@@ -1118,6 +1275,40 @@ document.addEventListener("click", async (e) => {
           await saved("Appuntamento annullato.");
         },
       );
+    if (a === "google-connect") {
+      b.disabled = true;
+      try {
+        const r = await api("/api/integrations/google/connect");
+        location.assign(r.url);
+      } catch (e) {
+        report(e);
+        b.disabled = false;
+      }
+      return;
+    }
+    if (a === "apple-disconnect") {
+      await api("/api/integrations/apple/delete", {});
+      await refresh();
+      return toast("Apple disconnesso.");
+    }
+    if (a === "link-add") {
+      $("#bio-links").insertAdjacentHTML("beforeend", linkRow());
+      return;
+    }
+    if (a === "link-up" || a === "link-down") {
+      const row = b.closest(".link-row");
+      const sib = a === "link-up" ? row.previousElementSibling : row.nextElementSibling;
+      if (sib)
+        row.parentNode.insertBefore(
+          a === "link-up" ? row : sib,
+          a === "link-up" ? sib : row,
+        );
+      return;
+    }
+    if (a === "link-remove") {
+      b.closest(".link-row").remove();
+      return;
+    }
     if (a === "new-note") return noteModal();
     if (a === "edit-note") return noteModal(id);
     if (a === "email-note") return emailNoteModal(id);
@@ -1393,6 +1584,12 @@ async function booking() {
 (async () => {
   try {
     if (location.pathname.startsWith("/book/")) return await booking();
+    const qs = new URLSearchParams(location.search);
+    if (qs.get("view") === "settings") location.hash = "#settings";
+    if (qs.get("linked") === "google")
+      pendingToast = "Google collegato: ora puoi sincronizzare il calendario.";
+    if ([...qs.keys()].length)
+      history.replaceState(null, "", location.pathname);
     const s = await api("/api/session");
     if (!s.authenticated) return auth(s.setup);
     await refresh();

@@ -63,12 +63,16 @@ export function ensureDefaults(): Promise<void> {
   return done;
 }
 
-/** settings() di app.py: tutte le impostazioni tranne la password (DEFAULTS come rete). */
+/**
+ * settings() di app.py: tutte le impostazioni tranne la password (DEFAULTS come rete).
+ * Esclude anche le chiavi di integrazione (int_*, email_sender): valori cifrati (v1:…)
+ * o grezzi che settings() non deve interpretare e che non devono mai raggiungere il client.
+ */
 export async function settings(): Promise<Record<string, any>> {
   const rows = await prisma().setting.findMany();
   const out: Record<string, any> = { ...DEFAULTS };
   for (const row of rows) {
-    if (row.key === "password") continue;
+    if (row.key === "password" || row.key === "email_sender" || row.key.startsWith("int_")) continue;
     out[row.key] = JSON.parse(row.value);
   }
   return out;

@@ -264,3 +264,32 @@ describe("integrazioni", () => {
     expect(rows).toHaveLength(0);
   });
 });
+
+describe("regressione: /api/state dopo il collegamento", () => {
+  it("connect Google + salvataggio Apple non rompono /api/state e i segreti restano fuori", async () => {
+    const c = await fresh();
+    vi.stubEnv("GOOGLE_CLIENT_ID", GOOGLE_ENV.GOOGLE_CLIENT_ID);
+    vi.stubEnv("GOOGLE_CLIENT_SECRET", GOOGLE_ENV.GOOGLE_CLIENT_SECRET);
+    vi.stubEnv("INTEGRATIONS_KEY", GOOGLE_ENV.INTEGRATIONS_KEY);
+
+    const connect = await c.request("/api/integrations/google/connect");
+    expect(connect.status).toBe(200);
+
+    const apple = await c.request("/api/integrations/apple", {
+      apple_id: "dany@icloud.com",
+      app_password: "abcd-efgh-ijkl",
+      sender_email: "dany@icloud.com",
+    });
+    expect(apple.status).toBe(200);
+
+    const state = await c.request("/api/state");
+    expect(state.status).toBe(200);
+    for (const key of ["int_google", "int_google_state", "int_apple", "int_apple_status", "email_sender"]) {
+      expect(state.body.settings).not.toHaveProperty(key);
+    }
+    const raw = JSON.stringify(state.body);
+    expect(raw).not.toContain("abcd-efgh-ijkl");
+    expect(raw).not.toContain("v1:");
+    expect(raw).not.toContain("client-secret-di-test");
+  });
+});

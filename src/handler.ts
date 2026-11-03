@@ -293,6 +293,7 @@ async function handleGet(req: HandlerRequest): Promise<HandlerResponse> {
       blocks,
       notes: await p.note.findMany({ orderBy: [{ pinned: "desc" }, { updated_at: "desc" }] }),
       integrations: await integrationStatus(),
+      bio: await getBio(),
       settings: await settings(),
       fiscal_catalog: fiscal.catalog(),
     });
