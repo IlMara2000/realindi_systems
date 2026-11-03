@@ -44,6 +44,8 @@ const labels = {
   invoices: "Fatture",
   documents: "Documenti",
   calendar: "Appuntamenti",
+  planner: "Calendario",
+  notes: "Note",
   settings: "Impostazioni",
   discovery: "In definizione",
   active: "In corso",
@@ -69,6 +71,8 @@ const paths = {
   documents:
     "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6",
   calendar: "M4 5h16v16H4z M16 3v4 M8 3v4 M4 11h16 M8 15h2 M14 15h2",
+  planner: "M4 5h16v16H4z M16 3v4 M8 3v4 M4 11h16 M8 15h2 M14 15h2",
+  notes: "M6 3h12a1 1 0 0 1 1 1v16l-3.5-2.5L12 20l-3.5-2.5L5 20V4a1 1 0 0 1 1-1z M9 8h6 M9 12h6",
   settings:
     "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8 M12 2v3 M12 19v3 M2 12h3 M19 12h3 M5 5l2 2 M17 17l2 2 M5 19l2-2 M17 7l2-2",
 };
@@ -79,7 +83,12 @@ const pill = (status) =>
 let state,
   route = "dashboard",
   search = "",
-  filter = "all";
+  filter = "all",
+  plannerMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+  selectedDay = today(),
+  eventsCache = [],
+  eventsFrom = "",
+  eventsTo = "";
 async function api(url, data) {
   const res = await fetch(url, {
     credentials: "same-origin",
@@ -194,7 +203,7 @@ function render() {
   route = location.hash.slice(1) || "dashboard";
   if (!labels[route]) route = "dashboard";
   $("#root").innerHTML =
-    `<div class="shell"><aside class="sidebar"><a class="brand" href="#dashboard"><span class="brand-mark">r</span> REALINDI</a><div class="brand-sub">FREELANCER WORKSPACE</div><div class="nav-label">WORKSPACE</div><nav class="nav" aria-label="Menu principale">${["dashboard", "clients", "projects", "quotes", "invoices", "documents", "calendar", "settings"].map((k) => `<a href="#${k}" class="${route === k ? "active" : ""}" ${route === k ? 'aria-current="page"' : ""}>${icon(k)}${labels[k]}</a>`).join("")}</nav><div class="sidebar-bottom"><div class="nav-label">IL TUO BUSINESS, IN ORDINE.</div><div class="account"><span class="avatar">${esc((state.settings.owner_name || "RS").slice(0, 2).toUpperCase())}</span><div>${esc(state.settings.owner_name || "Il tuo workspace")}<small>Consulente indipendente</small></div></div></div></aside><main class="main"><header class="topbar"><div class="crumb">Workspace <span>/ &nbsp; ${labels[route]}</span></div><div class="top-right"><span class="local-status"><i class="status-dot"></i>Archivio locale</span>${btn("Esci", "logout", "", "secondary small")}</div></header><div class="content" id="content"></div></main></div>`;
+    `<div class="shell"><aside class="sidebar"><a class="brand" href="#dashboard"><span class="brand-mark">r</span> REALINDI</a><div class="brand-sub">FREELANCER WORKSPACE</div><div class="nav-label">WORKSPACE</div><nav class="nav" aria-label="Menu principale">${["dashboard", "clients", "projects", "quotes", "invoices", "documents", "calendar", "planner", "notes", "settings"].map((k) => `<a href="#${k}" class="${route === k ? "active" : ""}" ${route === k ? 'aria-current="page"' : ""}>${icon(k)}${labels[k]}</a>`).join("")}</nav><div class="sidebar-bottom"><div class="nav-label">IL TUO BUSINESS, IN ORDINE.</div><div class="account"><span class="avatar">${esc((state.settings.owner_name || "RS").slice(0, 2).toUpperCase())}</span><div>${esc(state.settings.owner_name || "Il tuo workspace")}<small>Consulente indipendente</small></div></div></div></aside><main class="main"><header class="topbar"><div class="crumb">Workspace <span>/ &nbsp; ${labels[route]}</span></div><div class="top-right"><span class="local-status"><i class="status-dot"></i>Archivio locale</span>${btn("Esci", "logout", "", "secondary small")}</div></header><div class="content" id="content"></div></main></div>`;
   renderContent();
 }
 function renderContent() {
@@ -206,6 +215,8 @@ function renderContent() {
     invoices,
     documents,
     calendar,
+    planner,
+    notes,
     settingsView,
   };
   $("#content").innerHTML = (
@@ -215,6 +226,7 @@ function renderContent() {
     $("#content").insertAdjacentHTML("afterbegin", '<div class="callout"><strong>Configura la tua azienda</strong><br>Inserisci dati fiscali e preferenze di fatturazione prima di generare il primo XML. <a href="#settings">Apri impostazioni →</a></div>');
   }
   bindView();
+  if (route === "planner") loadPlannerEvents();
 }
 function dashboard() {
   const paid = state.invoices.filter((x) => x.status === "paid");
@@ -498,6 +510,268 @@ function calendar() {
             "La tua agenda è libera",
             "Le nuove prenotazioni compariranno qui automaticamente.",
           ),
+    )
+  );
+}
+const isoDate = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const toLocalInput = (iso) => {
+  const d = new Date(iso);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+const dayIso = (v) => String(v || "").slice(0, 10);
+const excerpt = (s, n = 150) => {
+  const t = String(s || "").replace(/\s+/g, " ").trim();
+  return t.length > n ? t.slice(0, n) + "…" : t;
+};
+function noteLinks(n) {
+  const chips = [];
+  if (n.client_id) {
+    const c = client(n.client_id);
+    if (c.id) chips.push(`<span class="pill">Cliente · ${esc(c.name)}</span>`);
+  }
+  if (n.project_id) {
+    const p = project(n.project_id);
+    if (p.id) chips.push(`<span class="pill">Progetto · ${esc(p.title)}</span>`);
+  }
+  return chips.join("");
+}
+function notes() {
+  const q = search.trim().toLowerCase();
+  const list = (state.notes || []).filter((n) => {
+    if (!q) return true;
+    const hay = (
+      n.title +
+      " " +
+      n.body +
+      " " +
+      (client(n.client_id).name || "") +
+      " " +
+      (project(n.project_id).title || "")
+    ).toLowerCase();
+    return hay.includes(q);
+  });
+  return (
+    title(
+      "Tutto ciò che conta, in ordine.",
+      "Appunti e promemoria, opzionalmente agganciati a cliente o progetto.",
+      btn("+ Nuova nota", "new-note", "", "primary"),
+    ) +
+    searchbar("Cerca nota…") +
+    (list.length
+      ? `<div class="note-grid">${list.map(noteCard).join("")}</div>`
+      : empty(
+          "notes",
+          q ? "Nessuna nota trovata." : "Nessuna nota per ora.",
+          q
+            ? "Prova con un’altra parola."
+            : "Crea la tua prima nota: idee, appunti, promemoria per i clienti.",
+          btn("+ Nuova nota", "new-note", "", "primary"),
+        ))
+  );
+}
+function noteCard(n) {
+  const chips = noteLinks(n);
+  return `<article class="note-card${n.pinned ? " pinned" : ""}"><div class="note-head"><h3>${esc(n.title)}</h3>${n.pinned ? '<span class="pill confirmed">Fissata</span>' : ""}</div><p>${esc(excerpt(n.body))}</p>${chips ? `<div class="note-links">${chips}</div>` : ""}<div class="actions note-actions">${btn("Modifica", "edit-note", n.id)}${btn("Email", "email-note", n.id)}${btn(n.pinned ? "Sblocca" : "Fissa", "pin-note", n.id)}${btn("Elimina", "delete-note", n.id, "secondary small danger")}</div></article>`;
+}
+function noteModal(id) {
+  const n = id ? (state.notes || []).find((x) => x.id === Number(id)) : null;
+  showModal(
+    n ? "Modifica nota" : "Nuova nota",
+    `<form class="form-grid">${field("Titolo", "title", "text", n?.title || "", 'required maxlength="160"')}${area("Contenuto", "body", n?.body || "")}${select(
+      "Cliente",
+      "client_id",
+      [["", "Nessun cliente"], ...state.clients.map((c) => [String(c.id), c.name])],
+      n?.client_id || "",
+    )}${select(
+      "Progetto",
+      "project_id",
+      [["", "Nessun progetto"], ...state.projects.map((p) => [String(p.id), p.title])],
+      n?.project_id || "",
+    )}<div class="field full check-row"><label><input type="checkbox" name="pinned" ${n?.pinned ? "checked" : ""}>Fissa in cima all’elenco</label></div>${formBottom("Salva nota")}</form>`,
+    async (d) => {
+      await api("/api/notes", {
+        ...(n ? { id: n.id } : {}),
+        title: d.title,
+        body: d.body,
+        pinned: Boolean(d.pinned),
+        client_id: d.client_id ? Number(d.client_id) : null,
+        project_id: d.project_id ? Number(d.project_id) : null,
+      });
+      $("#modal").close();
+      await refresh();
+      toast("Nota salvata.");
+    },
+  );
+}
+function emailNoteModal(id) {
+  const n = (state.notes || []).find((x) => x.id === Number(id));
+  if (!n) return;
+  const to = n.client_id ? client(n.client_id).email || "" : "";
+  const sender = state.integrations?.sender || "";
+  showModal(
+    "Invia nota via email",
+    `<form class="form-grid">${field("A", "to", "email", to, 'required placeholder="cliente@example.com"')}${field("Oggetto", "subject", "text", n.title, 'required maxlength="200"')}${area("Messaggio", "body", n.body)}<div class="field full"><p class="hint">${
+      sender
+        ? "Mittente: " + esc(sender)
+        : "Nessun mittente collegato: aggiungilo in Impostazioni → Integrazioni per inviare email."
+    }</p></div>${formBottom("Invia")}</form>`,
+    async (d) => {
+      await api("/api/email/send", { to: d.to, subject: d.subject, body: d.body });
+      $("#modal").close();
+      toast("Email inviata.");
+    },
+  );
+}
+function emailEventModal(id) {
+  const e = eventsCache.find((x) => x.id === Number(id));
+  if (!e) return;
+  const sender = state.integrations?.sender || "";
+  showModal(
+    "Condividi evento via email",
+    `<form class="form-grid">${field("A", "to", "email", "", 'required placeholder="cliente@example.com"')}${field("Oggetto", "subject", "text", e.title, 'required maxlength="200"')}${area(
+      "Messaggio",
+      "body",
+      e.description || `Quando: ${timeLabel(e.start)} · Europe/Rome`,
+    )}<div class="field full check-row"><label><input type="checkbox" name="with_ics" checked>Allega l’invito .ics</label></div><div class="field full"><p class="hint">${
+      sender
+        ? "Mittente: " + esc(sender)
+        : "Nessun mittente collegato: aggiungilo in Impostazioni → Integrazioni per inviare email."
+    }</p></div>${formBottom("Invia")}</form>`,
+    async (d) => {
+      const payload = { to: d.to, subject: d.subject, body: d.body };
+      if (d.with_ics) payload.ics = { title: e.title, start: e.start, end: e.end };
+      await api("/api/email/send", payload);
+      $("#modal").close();
+      toast("Email inviata.");
+    },
+  );
+}
+function eventModal(id, dateIso) {
+  const e = id ? eventsCache.find((x) => x.id === Number(id)) : null;
+  const start = e ? toLocalInput(e.start) : (dateIso || today()) + "T09:00";
+  const end = e ? toLocalInput(e.end) : (dateIso || today()) + "T10:00";
+  showModal(
+    e ? "Modifica evento" : "Nuovo evento",
+    `<form class="form-grid">${field("Titolo", "title", "text", e?.title || "", 'required maxlength="200"')}${field("Inizio", "start", "datetime-local", start, "required")}${field("Fine", "end", "datetime-local", end, "required")}${field("Luogo", "location", "text", e?.location || "", 'maxlength="300"')}${area("Descrizione", "description", e?.description || "")}${formBottom("Salva evento")}</form>`,
+    async (d) => {
+      await api("/api/events", {
+        ...(e ? { id: e.id } : {}),
+        title: d.title,
+        start: new Date(d.start).toISOString(),
+        end: new Date(d.end).toISOString(),
+        location: d.location || null,
+        description: d.description || null,
+      });
+      $("#modal").close();
+      invalidateEvents();
+      await loadPlannerEvents();
+      toast("Evento salvato.");
+    },
+  );
+}
+function invalidateEvents() {
+  eventsFrom = "";
+  eventsTo = "";
+}
+async function loadPlannerEvents() {
+  const y = plannerMonth.getFullYear(),
+    m = plannerMonth.getMonth();
+  const from = isoDate(new Date(y, m, 1));
+  const to = isoDate(new Date(y, m + 1, 0));
+  if (eventsFrom === from && eventsTo === to) return;
+  try {
+    const r = await api(`/api/events?from=${from}&to=${to}`);
+    eventsCache = r.events;
+    eventsFrom = from;
+    eventsTo = to;
+    if (route === "planner") renderContent();
+  } catch (e) {
+    report(e);
+  }
+}
+function planner() {
+  const integ = state.integrations || { google: {}, apple: {} };
+  const y = plannerMonth.getFullYear(),
+    m = plannerMonth.getMonth();
+  const monthLabel = plannerMonth.toLocaleDateString("it-IT", {
+    month: "long",
+    year: "numeric",
+  });
+  const offset = (new Date(y, m, 1).getDay() + 6) % 7;
+  const days = new Date(y, m + 1, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < offset; i++)
+    cells.push('<div class="day-cell other" aria-hidden="true"></div>');
+  for (let d = 1; d <= days; d++) {
+    const iso = `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    const evs = eventsCache.filter((e) => dayIso(e.start) === iso);
+    cells.push(
+      `<button type="button" class="day-cell${iso === selectedDay ? " selected" : ""}${iso === today() ? " today" : ""}" data-action="pick-day" data-id="${iso}" aria-label="${iso}"><span class="day-num">${d}</span>${evs
+        .slice(0, 2)
+        .map(
+          (e) =>
+            `<span class="event-chip" title="${esc(e.title)}">${timeLabel(e.start)} ${esc(e.title)}</span>`,
+        )
+        .join("")}${evs.length > 2 ? `<span class="more-chip">+${evs.length - 2} eventi</span>` : ""}</button>`,
+    );
+  }
+  const dayEvents = eventsCache
+    .filter((e) => dayIso(e.start) === selectedDay)
+    .sort((a, b) => a.start.localeCompare(b.start));
+  const nowIso = new Date().toISOString();
+  const upcoming = eventsCache
+    .filter((e) => String(e.end) >= nowIso)
+    .sort((a, b) => a.start.localeCompare(b.start));
+  const selectedLabel = new Date(selectedDay + "T00:00:00").toLocaleDateString(
+    "it-IT",
+    { weekday: "long", day: "numeric", month: "long" },
+  );
+  const chip = (cls, text) => `<span class="provider-chip ${cls}">${text}</span>`;
+  return (
+    title(
+      "Il calendario al lavoro che conta.",
+      "Vista mensile, planner e sincronizzazione con Google Calendar e Apple iCloud.",
+      btn("+ Nuovo evento", "new-event", "", "primary"),
+    ) +
+    `<div class="sync-row">${chip(
+      integ.google.connected ? "on" : "off",
+      `Google Calendar ${integ.google.connected ? (integ.google.needs_reauth ? "· riautentica" : "· collegato") : "· non collegato"}`,
+    )}${chip(
+      integ.apple.connected ? "on" : "off",
+      `Apple CalDAV ${integ.apple.connected ? "· collegato" : "· non collegato"}`,
+    )}${integ.key_configured === false ? chip("warn", "INTEGRATIONS_KEY non configurata") : ""}<span class="hint">${
+      integ.google.connected || integ.apple.connected
+        ? "Sincronizza per aggiornare gli eventi dai provider."
+        : "Collega Google o Apple in Impostazioni → Integrazioni per sincronizzare."
+    }</span><span class="actions">${btn("Sincronizza ora", "planner-sync")}</span></div>` +
+    `<div class="grid-two"><section class="panel"><div class="panel-head"><div class="month-head"><button type="button" class="month-nav" data-action="month-prev" aria-label="Mese precedente">‹</button><h2>${monthLabel}</h2><button type="button" class="month-nav" data-action="month-next" aria-label="Mese successivo">›</button></div>${btn("Oggi", "month-today", "", "secondary small")}</div><div class="month-grid">${["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"]
+      .map((w) => `<div class="wd">${w}</div>`)
+      .join("")}${cells.join("")}</div></section>` +
+    `<section class="panel"><div class="panel-head"><h2 style="text-transform:capitalize">${esc(selectedLabel)}</h2>${btn("+ Evento", "new-event", selectedDay, "secondary small")}</div><div class="panel-body">${
+      dayEvents.length
+        ? dayEvents
+            .map(
+              (e) =>
+                `<div class="list-row"><div class="list-info"><strong>${esc(e.title)}</strong><small>${timeLabel(e.start)} → ${timeLabel(e.end)}${e.location ? " · " + esc(e.location) : ""}</small></div><div class="actions">${btn("Modifica", "edit-event", e.id)}${btn("Email", "event-email", e.id)}${btn("Elimina", "delete-event", e.id, "secondary small danger")}</div></div>`,
+            )
+            .join("")
+        : '<p class="subtitle">Nessun evento in questo giorno.</p>'
+    }</div></section></div>` +
+    panel(
+      "Eventi in programma",
+      upcoming.length
+        ? table(
+            ["Quando", "Evento", ""],
+            upcoming.map(
+              (e) =>
+                `<tr><td>${timeLabel(e.start)}</td><td><strong>${esc(e.title)}</strong><small>${esc(
+                  excerpt(e.description || e.location || "", 80),
+                )}</small></td><td><div class="actions">${btn("Apri", "edit-event", e.id)}${btn("Email", "event-email", e.id)}</div></td></tr>`,
+            ),
+          )
+        : '<div class="panel-body"><p class="subtitle">Nessun evento futuro in questo mese.</p></div>',
     )
   );
 }
@@ -844,6 +1118,85 @@ document.addEventListener("click", async (e) => {
           await saved("Appuntamento annullato.");
         },
       );
+    if (a === "new-note") return noteModal();
+    if (a === "edit-note") return noteModal(id);
+    if (a === "email-note") return emailNoteModal(id);
+    if (a === "event-email") return emailEventModal(id);
+    if (a === "pin-note") {
+      const n = (state.notes || []).find((x) => x.id === Number(id));
+      if (!n) return;
+      await api("/api/notes", {
+        id: n.id,
+        title: n.title,
+        body: n.body,
+        pinned: !n.pinned,
+        client_id: n.client_id,
+        project_id: n.project_id,
+      });
+      await refresh();
+      return toast(n.pinned ? "Nota sbloccata." : "Nota fissata in cima.");
+    }
+    if (a === "delete-note")
+      return confirmAction(
+        "Eliminare la nota?",
+        "La nota verrà rimossa definitivamente.",
+        async () => {
+          await api("/api/notes/delete", { id: Number(id) });
+          await refresh();
+          toast("Nota eliminata.");
+        },
+      );
+    if (a === "new-event") return eventModal(undefined, id || undefined);
+    if (a === "edit-event") return eventModal(id);
+    if (a === "delete-event")
+      return confirmAction(
+        "Eliminare l’evento?",
+        "L’evento sparirà dal calendario e, alla prossima sincronizzazione, anche dai provider collegati.",
+        async () => {
+          await api("/api/events/delete", { id: Number(id) });
+          invalidateEvents();
+          await loadPlannerEvents();
+          toast("Evento eliminato.");
+        },
+      );
+    if (a === "pick-day") {
+      selectedDay = id;
+      return renderContent();
+    }
+    if (a === "month-prev" || a === "month-next") {
+      plannerMonth = new Date(
+        plannerMonth.getFullYear(),
+        plannerMonth.getMonth() + (a === "month-next" ? 1 : -1),
+        1,
+      );
+      invalidateEvents();
+      renderContent();
+      return loadPlannerEvents();
+    }
+    if (a === "month-today") {
+      plannerMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+      selectedDay = today();
+      invalidateEvents();
+      renderContent();
+      return loadPlannerEvents();
+    }
+    if (a === "planner-sync") {
+      b.disabled = true;
+      try {
+        const r = await api("/api/sync/calendar", {});
+        await refresh();
+        invalidateEvents();
+        await loadPlannerEvents();
+        const msg = `Google: ${r.google.pulled} importati, ${r.google.sent} inviati · Apple: ${r.apple.pulled} importati, ${r.apple.sent} inviati${
+          r.errors.length
+            ? " — " + r.errors.slice(0, 2).join("; ") + (r.errors.length > 2 ? "…" : "")
+            : ""
+        }`;
+        return toast("Sincronizzazione completata. " + msg);
+      } finally {
+        b.disabled = false;
+      }
+    }
     if (a === "add-line") {
       $("#quote-lines").insertAdjacentHTML("beforeend", quoteLine());
       return calculateQuote();

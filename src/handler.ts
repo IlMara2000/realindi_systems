@@ -291,6 +291,8 @@ async function handleGet(req: HandlerRequest): Promise<HandlerResponse> {
       documents,
       appointments,
       blocks,
+      notes: await p.note.findMany({ orderBy: [{ pinned: "desc" }, { updated_at: "desc" }] }),
+      integrations: await integrationStatus(),
       settings: await settings(),
       fiscal_catalog: fiscal.catalog(),
     });
