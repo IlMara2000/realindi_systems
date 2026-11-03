@@ -37,6 +37,15 @@
         <img class="logo-mark" src="/assets/logo-realindi.png" alt="" width="30" height="30" />
         REALINDI SYSTEMS
       </a>
+      <button
+        type="button"
+        class="nav-toggle"
+        aria-label="Apri il menu"
+        aria-controls="site-menu"
+        aria-expanded="false"
+      >
+        <span class="nav-toggle-bars" aria-hidden="true"><span></span><span></span><span></span></span>
+      </button>
       <nav class="topstrip-nav" aria-label="Navigazione principale">
         <a href="/bio">Link in bio</a>
         <a class="btn btn-dark btn-sm" href="/app">Area riservata</a>
@@ -233,6 +242,40 @@
         <a href="/app">Area riservata</a>
       </nav>
     </footer>
+
+    <div class="drawer-scrim" aria-hidden="true"></div>
+
+    <aside id="site-menu" class="site-drawer" aria-label="Menu del sito">
+      <div class="drawer-head">
+        <p class="drawer-title">Menu</p>
+        <button type="button" class="drawer-close" aria-label="Chiudi il menu" aria-controls="site-menu">
+          <span aria-hidden="true">×</span>
+        </button>
+      </div>
+
+      <nav class="drawer-nav" aria-label="Sezioni del sito">
+        <a href="#servizi"><span class="drawer-num">01</span> Servizi</a>
+        <a href="#chi-sono"><span class="drawer-num">02</span> Chi sono</a>
+        <a href="#lavori"><span class="drawer-num">03</span> Lavori</a>
+        <a href="#contatti"><span class="drawer-num">04</span> Contatti</a>
+      </nav>
+
+      <div class="drawer-actions">
+        <a class="btn btn-dark btn-sm" href="/bio">Link in bio</a>
+        <a class="btn btn-primary btn-sm" data-booking href="/app">Prenota una call gratuita</a>
+        <p class="drawer-note">Risposta entro un giorno lavorativo</p>
+      </div>
+    </aside>
+
+    <button
+      type="button"
+      class="drawer-tab"
+      aria-label="Apri il menu"
+      aria-controls="site-menu"
+      aria-expanded="false"
+    >
+      <span class="drawer-tab-chev" aria-hidden="true">‹</span>
+    </button>
 
     <script src="/site.js"></script>
   </body>

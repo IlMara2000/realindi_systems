@@ -1,4 +1,48 @@
-// REALINDI SYSTEMS — sito pubblico: dati da /api/site (path prenotazione + bio).
+// REALINDI SYSTEMS — menu laterale mobile (hamburger in testata + linguetta
+// sul bordo destro). Il pannello esiste solo sotto gli 820px: da lì in su il
+// click non lo aprirebbe, quindi lo stato viene azzerato al cambio di misura.
+(function initMobileMenu() {
+  const drawer = document.getElementById("site-menu");
+  if (!drawer) return;
+
+  const openers = Array.from(document.querySelectorAll(".nav-toggle, .drawer-tab"));
+  const closers = Array.from(document.querySelectorAll(".drawer-close, .drawer-scrim"));
+  const firstLink = drawer.querySelector(".drawer-nav a");
+  let lastFocus = null;
+
+  function isOpen() {
+    return drawer.classList.contains("is-open");
+  }
+
+  function setOpen(open) {
+    drawer.classList.toggle("is-open", open);
+    document.body.classList.toggle("drawer-open", open);
+    openers.forEach((el) => el.setAttribute("aria-expanded", open ? "true" : "false"));
+    if (open) {
+      lastFocus = document.activeElement;
+      if (firstLink) firstLink.focus({ preventScroll: true });
+    } else if (lastFocus && typeof lastFocus.focus === "function") {
+      lastFocus.focus({ preventScroll: true });
+    }
+  }
+
+  openers.forEach((el) => el.addEventListener("click", () => setOpen(!isOpen())));
+  closers.forEach((el) => el.addEventListener("click", () => setOpen(false)));
+  drawer.querySelectorAll("a").forEach((a) =>
+    a.addEventListener("click", () => setOpen(false))
+  );
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && isOpen()) setOpen(false);
+  });
+
+  const desktop = window.matchMedia("(min-width: 821px)");
+  desktop.addEventListener("change", (e) => {
+    if (e.matches && isOpen()) setOpen(false);
+  });
+})();
+
+// Dati da /api/site (path prenotazione + bio).
 // Degradazione graziosa: senza risposta la pagina resta navigabile e le CTA
 // di prenotazione vengono nascoste, i link bio mostrano uno stato vuoto.
 (async function () {
