@@ -200,11 +200,36 @@ function auth(setup) {
     }
   };
 }
+/* Menu di navigazione mobile: pannello laterale + linguetta di riapertura. */
+function setMenu(open) {
+  const drawer = $("#crm-menu");
+  if (!drawer) return;
+  drawer.classList.toggle("is-open", open);
+  document.body.classList.toggle("drawer-open", open);
+  const toggle = $(".nav-toggle");
+  if (toggle) toggle.setAttribute("aria-expanded", String(open));
+  const tab = $(".drawer-tab");
+  if (tab) tab.setAttribute("aria-expanded", String(open));
+  if (open) {
+    const first = $(".nav a", drawer);
+    if (first) first.focus({ preventScroll: true });
+  } else if (toggle) {
+    toggle.focus({ preventScroll: true });
+  }
+}
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && document.body.classList.contains("drawer-open")) setMenu(false);
+});
+window.addEventListener("resize", () => {
+  if (window.innerWidth > 850 && document.body.classList.contains("drawer-open")) setMenu(false);
+});
 function render() {
+  // Ogni render ricostruisce il guscio: il pannello torna chiuso.
+  document.body.classList.remove("drawer-open");
   route = location.hash.slice(1) || "dashboard";
   if (!labels[route]) route = "dashboard";
   $("#root").innerHTML =
-    `<div class="shell"><aside class="sidebar"><a class="brand" href="#dashboard"><img class="brand-mark" src="/assets/logo-realindi.png" alt="" width="32" height="32"> REALINDI</a><div class="brand-sub">FREELANCER WORKSPACE</div><div class="nav-label">WORKSPACE</div><nav class="nav" aria-label="Menu principale">${["dashboard", "clients", "projects", "quotes", "invoices", "documents", "calendar", "planner", "notes", "settings"].map((k) => `<a href="#${k}" class="${route === k ? "active" : ""}" ${route === k ? 'aria-current="page"' : ""}>${icon(k)}${labels[k]}</a>`).join("")}</nav><div class="sidebar-bottom"><div class="nav-label">IL TUO BUSINESS, IN ORDINE.</div><div class="account"><span class="avatar">${esc((state.settings.owner_name || "RS").slice(0, 2).toUpperCase())}</span><div>${esc(state.settings.owner_name || "Il tuo workspace")}<small>Consulente indipendente</small></div></div></div></aside><main class="main"><header class="topbar"><div class="crumb">Workspace <span>/ &nbsp; ${labels[route]}</span></div><div class="top-right"><span class="local-status"><i class="status-dot"></i>Archivio locale</span>${btn("Esci", "logout", "", "secondary small")}</div></header><div class="content" id="content"></div></main></div>`;
+    `<div class="shell"><div class="drawer-scrim" data-action="menu-close" aria-hidden="true"></div><button type="button" class="drawer-tab" data-action="menu-open" aria-controls="crm-menu" aria-expanded="false" aria-label="Apri il menu"><span aria-hidden="true">‹</span></button><aside class="sidebar" id="crm-menu"><button type="button" class="drawer-close" data-action="menu-close" aria-label="Chiudi il menu">×</button><a class="brand" href="#dashboard"><img class="brand-mark" src="/assets/logo-realindi.png" alt="" width="32" height="32"> REALINDI</a><div class="brand-sub">FREELANCER WORKSPACE</div><div class="nav-label">WORKSPACE</div><nav class="nav" aria-label="Menu principale">${["dashboard", "clients", "projects", "quotes", "invoices", "documents", "calendar", "planner", "notes", "settings"].map((k) => `<a href="#${k}" class="${route === k ? "active" : ""}" ${route === k ? 'aria-current="page"' : ""}>${icon(k)}${labels[k]}</a>`).join("")}</nav><div class="sidebar-bottom"><div class="nav-label">IL TUO BUSINESS, IN ORDINE.</div><div class="account"><span class="avatar">${esc((state.settings.owner_name || "RS").slice(0, 2).toUpperCase())}</span><div>${esc(state.settings.owner_name || "Il tuo workspace")}<small>Consulente indipendente</small></div></div></div></aside><main class="main"><header class="topbar"><div class="crumb">Workspace <span>/ &nbsp; ${labels[route]}</span></div><div class="top-right"><span class="local-status"><i class="status-dot"></i>Archivio locale</span>${btn("Esci", "logout", "", "secondary small")}<button type="button" class="nav-toggle" data-action="menu-toggle" aria-controls="crm-menu" aria-expanded="false" aria-label="Apri il menu"><span class="nav-toggle-bars" aria-hidden="true"></span></button></div></header><div class="content" id="content"></div></main></div>`;
   renderContent();
   if (pendingToast) {
     const t = pendingToast;
@@ -1229,6 +1254,9 @@ document.addEventListener("click", async (e) => {
   if (!b) return;
   const a = b.dataset.action,
     id = b.dataset.id;
+  if (a === "menu-open") return setMenu(true);
+  if (a === "menu-close") return setMenu(false);
+  if (a === "menu-toggle") return setMenu(!document.body.classList.contains("drawer-open"));
   try {
     if (a === "close") {
       calcVersion++;
