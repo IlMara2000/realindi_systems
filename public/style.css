@@ -222,6 +222,30 @@ button.primary,
   color: var(--muted);
   font-size: 12px;
 }
+.topbar-head {
+  display: grid;
+  gap: 7px;
+  justify-items: start;
+  min-width: 0;
+}
+.back-site {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 13px;
+  border-radius: var(--radius-pill);
+  background: var(--bg);
+  box-shadow: var(--raised-sm);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.back-site:hover {
+  text-decoration: none;
+  box-shadow: var(--inset-sm);
+}
 .crumb span {
   color: var(--ink);
   margin-left: 12px;
@@ -791,37 +815,56 @@ dialog::backdrop {
   color: var(--muted);
 }
 .booking {
-  max-width: 980px;
-  margin: 60px auto;
-  padding: 0 24px;
+  width: min(100%, 980px);
+  margin: 48px auto 0;
+  padding: 0 24px 40px;
+}
+.booking > .brand {
+  gap: 12px;
+  padding-left: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
 }
 .booking-card {
   display: grid;
-  grid-template-columns: 1fr 1.2fr;
-  background: white;
-  border: 1px solid var(--line);
-  border-radius: 18px;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  align-items: stretch;
+  background: var(--bg);
+  border-radius: var(--radius);
+  box-shadow: var(--raised);
   overflow: hidden;
-  margin-top: 35px;
+  margin-top: 28px;
 }
 .booking-info {
-  padding: 40px;
-  background: #f1f4f9;
-  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 40px 36px;
+}
+.booking-info p {
+  margin: 0;
+  max-width: 46ch;
 }
 .booking-info h1 {
-  font-size: 30px;
-  line-height: 1.2;
-  margin: 27px 0 18px;
+  font-size: clamp(1.5rem, 2.6vw, 1.9rem);
+  line-height: 1.18;
+  letter-spacing: -0.01em;
+  margin: 6px 0 0;
+}
+.booking-info .hint {
+  margin-top: auto;
 }
 .booking-content {
-  padding: 35px;
+  padding: 40px 36px;
+  min-width: 0;
 }
 .slot-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 9px;
-  margin: 20px 0;
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  gap: 10px;
+  margin: 18px 0 4px;
 }
 .slot {
   border: 1px solid #d5dce7;
@@ -1080,7 +1123,10 @@ dialog::backdrop {
     }
   }
   .topbar {
-    height: 60px;
+    height: auto;
+    min-height: 60px;
+    padding: 10px 16px;
+    gap: 10px;
   }
   .mobile-brand {
     display: block;
@@ -1126,7 +1172,7 @@ dialog::backdrop {
     padding: 24px 16px;
   }
   .topbar {
-    padding: 0 16px;
+    padding: 10px 16px;
   }
   .top-right .local-status {
     display: none;

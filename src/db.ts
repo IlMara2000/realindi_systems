@@ -22,7 +22,7 @@ export const DEFAULTS: Record<string, unknown> = {
   business_name: "", owner_name: "", email: "", address: "",
   vat_number: "", tax_code: "", iban: "", tax_label: "",
   vat_rate: "0", hourly_rate: "60",
-  booking_title: "Parliamo del tuo progetto",
+  booking_title: "Prenota una chiacchierata",
   booking_description: "Un primo incontro per capire obiettivi, tempi e possibilità.",
   booking_duration: 30, booking_start: 9, booking_end: 18,
   booking_days: [0, 1, 2, 3, 4], booking_enabled: true,
