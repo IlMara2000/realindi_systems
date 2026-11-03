@@ -44,6 +44,13 @@ import {
   utcStamp,
 } from "./notes.js";
 import { listEvents, validateEventFields, parseRange } from "./events.js";
+import {
+  integrationStatus,
+  googleConnectUrl,
+  googleCallback,
+  saveApple,
+  removeApple,
+} from "./integrations.js";
 
 export interface HandlerRequest {
   method: string;
@@ -128,6 +135,13 @@ function parseQuery(raw: string): URLSearchParams {
 }
 
 // ---------------------------------------------------------------------- bio
+// Origine della richiesta (dietro il proxy di Vercel) per i redirect OAuth.
+function originOf(req: HandlerRequest): string {
+  const proto = (req.headers["x-forwarded-proto"] ?? "https").split(",")[0].trim();
+  const host = req.headers["host"] ?? "localhost";
+  return `${proto}://${host}`;
+}
+
 // Contenuti del sito pubblico (link-in-bio): salvati in settings (site_bio).
 
 const BIO_SECTIONS = new Set(["main", "socials", "contacts"]);
@@ -228,6 +242,20 @@ async function handleGet(req: HandlerRequest): Promise<HandlerResponse> {
   if (path === "/api/events") {
     const { from, to } = parseRange(parseQuery(req.query));
     return send({ events: await listEvents(from, to) });
+  }
+
+  if (path === "/api/integrations/status") return send(await integrationStatus());
+
+  if (path === "/api/integrations/google/connect") {
+    return send({ url: await googleConnectUrl(originOf(req)) });
+  }
+
+  if (path === "/api/integrations/google/callback") {
+    const q = parseQuery(req.query);
+    if (q.get("error")) return sendError(403, "Autorizzazione Google annullata.");
+    const saved = await googleCallback(q, originOf(req));
+    if (!saved) return sendError(403, "Stato OAuth non valido.");
+    return send("", 302, "text/plain; charset=utf-8", [["Location", "/app?view=settings&linked=google"]]);
   }
 
   if (path === "/api/state") {
@@ -512,6 +540,26 @@ async function handlePost(req: HandlerRequest): Promise<HandlerResponse> {
       where: { event_id: id },
       data: { dirty: true, deleted_at: stamp },
     });
+    return send({ ok: true });
+  }
+
+  if (path === "/api/integrations/apple") {
+    const appleId = String(d.apple_id ?? "").trim();
+    const appPassword = typeof d.app_password === "string" ? d.app_password : "";
+    const sender = String(d.sender_email ?? "").trim();
+    if (!appleId || !appPassword) throw new Invalid("Inserisci Apple ID e password specifica.");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sender)) throw new Invalid("Indirizzo mittente non valido.");
+    try {
+      await saveApple(appleId, appPassword, sender);
+    } catch (err) {
+      if (err instanceof Invalid) throw err;
+      throw new Invalid("Credenziali Apple non valide.");
+    }
+    return send({ ok: true });
+  }
+
+  if (path === "/api/integrations/apple/delete") {
+    await removeApple();
     return send({ ok: true });
   }
 
