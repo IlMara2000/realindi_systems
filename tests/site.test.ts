@@ -85,13 +85,13 @@ describe("routing sito", () => {
     expect(r.text).toContain('<script src="/site.js"></script>');
   });
 
-  it("site.css dichiara i tre colori del marchio e gli alias storici", async () => {
+  it("site.css dichiara i colori del marchio e le ombre neumorphic", async () => {
     const css = await get("/site.css");
-    expect(css.text).toContain("--brand: #14504b");
-    expect(css.text).toContain("--accent: #da6a4a");
-    expect(css.text).toContain("--highlight: #e9c46a");
-    expect(css.text).toContain("--green: var(--brand)");
-    expect(css.text).toContain("--lime: var(--highlight)");
+    expect(css.text).toContain("--brand: #141418");
+    expect(css.text).toContain("--accent: #ff6a1a");
+    expect(css.text).toContain("--tertiary: #55607a");
+    expect(css.text).toContain("--raised:");
+    expect(css.text).toContain("--inset:");
   });
 
   it("logo e favicon sono serviti dal sito e collegati nelle pagine", async () => {
