@@ -5,7 +5,9 @@
   "outputDirectory": "public",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api?path=$1" },
-    { "source": "/book/:slug*", "destination": "/index.html" }
+    { "source": "/app", "destination": "/app.html" },
+    { "source": "/bio", "destination": "/bio.html" },
+    { "source": "/book/:slug*", "destination": "/app.html" }
   ],
   "headers": [
     {

@@ -1047,6 +1047,6 @@ async function booking() {
     $("#root").innerHTML =
       '<div class="empty"><strong>Impossibile caricare il workspace</strong><p>' +
       esc(e.message) +
-      '</p><a href="/">Riprova</a></div>';
+      '</p><a href="/app">Riprova</a></div>';
   }
 })();

@@ -81,17 +81,30 @@ function sendError(status: number, message: string): HandlerResponse {
 
 const MIME: Record<string, string> = {
   "index.html": "text/html; charset=utf-8",
+  "app.html": "text/html; charset=utf-8",
+  "bio.html": "text/html; charset=utf-8",
   "app.js": "text/javascript; charset=utf-8",
   "estimate.js": "text/javascript; charset=utf-8",
   "fiscal.js": "text/javascript; charset=utf-8",
+  "site.js": "text/javascript; charset=utf-8",
   "style.css": "text/css; charset=utf-8",
+  "site.css": "text/css; charset=utf-8",
 };
 
-const STATIC_FILES = new Set(["/app.js", "/estimate.js", "/fiscal.js", "/style.css"]);
+const STATIC_FILES = new Set([
+  "/app.js",
+  "/estimate.js",
+  "/fiscal.js",
+  "/site.js",
+  "/style.css",
+  "/site.css",
+]);
 
 function serveStatic(path: string): HandlerResponse | null {
   let file: string | null = null;
-  if (path === "/" || path.startsWith("/book/")) file = "index.html";
+  if (path === "/") file = "index.html";
+  else if (path === "/bio") file = "bio.html";
+  else if (path === "/app" || path.startsWith("/book/")) file = "app.html";
   else if (STATIC_FILES.has(path)) file = path.slice(1);
   if (!file) return null;
   try {
