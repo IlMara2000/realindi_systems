@@ -7,10 +7,24 @@
     <meta name="description" content="Tutti i link di REALINDI SYSTEMS in un'unica pagina." />
     <link rel="stylesheet" href="/site.css" />
   </head>
-  <body>
-    <div id="bio-root">
-      <p>Link in bio in costruzione.</p>
-    </div>
+  <body class="page-bio">
+    <a class="skip" href="#bio-root">Vai al contenuto</a>
+    <main id="bio-root" class="bio">
+      <header class="bio-card">
+        <p class="label">LINK IN BIO</p>
+        <h1>REALINDI SYSTEMS</h1>
+        <p id="bio-tagline" class="bio-tagline"></p>
+      </header>
+
+      <nav id="bio-links" aria-label="Link di REALINDI SYSTEMS"></nav>
+
+      <div class="bio-actions">
+        <button type="button" id="bio-copy" class="btn btn-dark">Copia link</button>
+        <span id="bio-feedback" role="status" aria-live="polite"></span>
+      </div>
+
+      <p class="bio-back"><a href="/">← Torna al sito</a></p>
+    </main>
     <script src="/site.js"></script>
   </body>
 </html>

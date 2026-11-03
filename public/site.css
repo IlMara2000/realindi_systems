@@ -1,1 +1,521 @@
-/* REALINDI SYSTEMS — sito pubblico: neumorfismo + brutalismo (styling nel Task 4). */
+/* REALINDI SYSTEMS — sito pubblico + link in bio.
+   Stile: neumorfismo misto a brutalismo.
+   - Struttura/CTA brutalista: bordi neri 2px, ombre dure senza blur, press al click.
+   - Pannelli neumorfici: doppia ombra chiara/scura sullo stesso tono di fondo.
+   Nessuna risorsa esterna (CSP default-src 'self'). */
+
+:root {
+  --bg: #f5f6f3;
+  --paper: #fff;
+  --ink: #20332d;
+  --muted: #6b7973;
+  --line: #e0e6df;
+  --green:#276247;
+  --lime:#d2ed98;
+  --red: #a83c3c;
+  --black: #111;
+
+  --border: 2px solid var(--black);
+  --shadow-hard: 6px 6px 0 var(--black);
+  --shadow-hard-sm: 4px 4px 0 var(--black);
+  --shadow-neo: -6px -6px 12px rgba(255, 255, 255, 0.75), 6px 6px 12px rgba(0, 0, 0, 0.08);
+  --shadow-neo-inset: inset 3px 3px 8px rgba(0, 0, 0, 0.12), inset -3px -3px 8px rgba(255, 255, 255, 0.8);
+
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --radius: 14px;
+  --radius-sm: 10px;
+
+  font-family: var(--font-sans);
+  color: var(--ink);
+  background: var(--bg);
+  font-synthesis: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+h1,
+h2,
+h3 {
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.4em;
+}
+
+a {
+  color: var(--green);
+}
+
+img {
+  max-width: 100%;
+}
+
+.skip {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  background: var(--black);
+  color: var(--paper);
+  padding: 0.6rem 1rem;
+  z-index: 10;
+}
+
+.skip:focus {
+  left: 0;
+}
+
+:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------- etichette */
+.label {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--green);
+  margin: 0 0 1rem;
+}
+
+/* ----------------------------------------------------------------- pulsanti */
+.btn {
+  display: inline-block;
+  font-family: var(--font-sans);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 0.9rem;
+  text-decoration: none;
+  color: var(--black);
+  background: var(--paper);
+  border: var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.85rem 1.4rem;
+  box-shadow: var(--shadow-hard-sm);
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.btn:hover {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 var(--black);
+}
+
+.btn:active {
+  transform: translate(4px, 4px);
+  box-shadow: 0 0 0 var(--black);
+}
+
+.btn-primary {
+  background: var(--lime);
+}
+
+.btn-dark {
+  background: var(--black);
+  color: var(--paper);
+}
+
+.btn-ghost {
+  background: transparent;
+}
+
+.btn-sm {
+  padding: 0.45rem 0.9rem;
+  font-size: 0.8rem;
+  box-shadow: 3px 3px 0 var(--black);
+}
+
+/* ------------------------------------------------------------- top strip */
+.topstrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.9rem clamp(1rem, 4vw, 2.5rem);
+  background: var(--paper);
+  border-bottom: var(--border);
+}
+
+.topstrip-brand {
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+  color: var(--ink);
+}
+
+.topstrip-nav {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.topstrip-nav a:not(.btn) {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  color: var(--ink);
+  border-bottom: 2px solid transparent;
+}
+
+.topstrip-nav a:not(.btn):hover {
+  border-bottom-color: var(--black);
+}
+
+/* -------------------------------------------------------------- sezioni */
+.section {
+  padding: clamp(2.5rem, 7vw, 5rem) clamp(1rem, 4vw, 2.5rem);
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.sec-title {
+  font-size: clamp(1.8rem, 5vw, 3rem);
+  font-weight: 900;
+  text-transform: uppercase;
+  margin-bottom: 1.5rem;
+}
+
+.section-text {
+  max-width: 60ch;
+  color: var(--ink);
+}
+
+.section-text p + p {
+  margin-top: 1rem;
+}
+
+/* ----------------------------------------------------------------- hero */
+.hero {
+  padding-top: clamp(3rem, 9vw, 6rem);
+}
+
+.hero h1 {
+  font-size: clamp(2.4rem, 8vw, 5rem);
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: -0.03em;
+}
+
+.hero-lead {
+  font-size: clamp(1rem, 2.2vw, 1.25rem);
+  max-width: 55ch;
+  color: var(--muted);
+  margin: 1.25rem 0 2rem;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+/* ------------------------------------------------ righe numerate servizi */
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: var(--border);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: clamp(1rem, 4vw, 2.5rem);
+  align-items: center;
+  padding: clamp(1.1rem, 3vw, 1.75rem) 0.25rem;
+  border-bottom: var(--border);
+  background: transparent;
+  transition: background 0.15s ease, padding-left 0.15s ease;
+}
+
+.row:hover {
+  background: var(--lime);
+  padding-left: 1rem;
+}
+
+.row-num {
+  font-family: var(--font-mono);
+  font-size: clamp(1.4rem, 4vw, 2.2rem);
+  font-weight: 700;
+  color: var(--green);
+}
+
+.row-body h3 {
+  font-size: clamp(1.2rem, 3vw, 1.7rem);
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.row-body p {
+  margin: 0;
+  color: var(--muted);
+  max-width: 60ch;
+}
+
+.row-arrow {
+  font-size: 1.5rem;
+  font-weight: 900;
+}
+
+/* ---------------------------------------------------------- sezione split */
+.section-split {
+  display: grid;
+  gap: clamp(1.5rem, 4vw, 3rem);
+}
+
+@media (min-width: 860px) {
+  .section-split {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+}
+
+/* ----------------------------------------------------------------- cards */
+.cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1.5rem;
+}
+
+@media (min-width: 720px) {
+  .cards {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.card {
+  background: var(--paper);
+  border: var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-hard);
+  padding: 1.5rem;
+}
+
+.card-kicker {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--green);
+  margin: 0 0 0.75rem;
+}
+
+.card h3 {
+  font-size: 1.25rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.card p:last-child {
+  margin-bottom: 0;
+  color: var(--muted);
+}
+
+/* ------------------------------------------------------- pannello neumorfico */
+.section-neo {
+  background: var(--bg);
+  border-top: var(--border);
+  border-bottom: var(--border);
+}
+
+.section-neo .label {
+  color: var(--green);
+}
+
+.section-neo > * {
+  position: relative;
+}
+
+/* ---------------------------------------------------------------- footer */
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem clamp(1rem, 4vw, 2.5rem);
+  background: var(--black);
+  color: var(--paper);
+}
+
+.footer-brand {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+}
+
+.footer nav {
+  display: flex;
+  gap: 1.25rem;
+}
+
+.footer a {
+  color: var(--lime);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+
+.footer a:hover {
+  border-bottom-color: var(--lime);
+}
+
+/* ============================================================ LINK IN BIO */
+.page-bio {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  padding: clamp(1.5rem, 6vw, 3.5rem) 1rem;
+}
+
+.bio {
+  width: 100%;
+  max-width: 430px;
+}
+
+.bio-card {
+  background: var(--paper);
+  border: var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-hard);
+  padding: clamp(1.5rem, 5vw, 2.25rem);
+  text-align: center;
+}
+
+.bio-card h1 {
+  font-size: clamp(1.7rem, 7vw, 2.4rem);
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+}
+
+.bio-tagline {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.98rem;
+}
+
+.bio-tagline:empty {
+  display: none;
+}
+
+#bio-links {
+  display: grid;
+  gap: 0.9rem;
+  margin-top: 1.5rem;
+}
+
+.bio-link {
+  display: block;
+  text-align: center;
+  text-decoration: none;
+  color: var(--ink);
+  font-weight: 800;
+  background: var(--paper);
+  border: var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-hard-sm);
+  padding: 1rem 1.25rem;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+}
+
+.bio-link:hover {
+  background: var(--lime);
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 var(--black);
+}
+
+.bio-link:active {
+  transform: translate(4px, 4px);
+  box-shadow: 0 0 0 var(--black);
+}
+
+.bio-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.9rem;
+}
+
+.bio-row .bio-link {
+  padding: 0.85rem 0.5rem;
+  font-size: 0.85rem;
+}
+
+.bio-empty {
+  text-align: center;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  background: var(--paper);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-neo-inset);
+  padding: 1.25rem;
+}
+
+.bio-actions {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1.5rem;
+}
+
+#bio-feedback {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--green);
+  min-height: 1em;
+}
+
+.bio-back {
+  text-align: center;
+  margin-top: 1.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.bio-back a {
+  color: var(--ink);
+  text-decoration: none;
+  border-bottom: 2px solid var(--black);
+}
+
+/* ---------------------------------------------------------- accessibilità */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+
+  .btn:hover,
+  .bio-link:hover {
+    transform: none;
+  }
+}
