@@ -43,6 +43,7 @@ import {
   intId,
   utcStamp,
 } from "./notes.js";
+import { listEvents, validateEventFields, parseRange } from "./events.js";
 
 export interface HandlerRequest {
   method: string;
@@ -223,6 +224,11 @@ async function handleGet(req: HandlerRequest): Promise<HandlerResponse> {
   if (path === "/api/estimates/catalog") return send(CATALOG);
 
   if (path === "/api/notes") return send({ notes: await listNotes() });
+
+  if (path === "/api/events") {
+    const { from, to } = parseRange(parseQuery(req.query));
+    return send({ events: await listEvents(from, to) });
+  }
 
   if (path === "/api/state") {
     const [clients, projects, quotes, invoices, documents, appointments, blocks] = await Promise.all([
@@ -421,6 +427,20 @@ async function handlePost(req: HandlerRequest): Promise<HandlerResponse> {
     const found = await p.appointment.findUnique({ where: { cancel_token: token } });
     if (!found) throw new Invalid("Prenotazione non trovata.");
     await p.appointment.update({ where: { id: found.id }, data: { status: "cancelled" } });
+    const linked = await p.calendarEvent.findFirst({
+      where: { appointment_id: found.id, deleted_at: null },
+    });
+    if (linked) {
+      const stamp = utcStamp();
+      await p.calendarEvent.update({
+        where: { id: linked.id },
+        data: { deleted_at: stamp, updated_at: BigInt(Date.now()), dirty: true },
+      });
+      await p.eventLink.updateMany({
+        where: { event_id: linked.id },
+        data: { dirty: true, deleted_at: stamp },
+      });
+    }
     return send({ ok: true });
   }
 
@@ -458,6 +478,40 @@ async function handlePost(req: HandlerRequest): Promise<HandlerResponse> {
     const existing = await p.note.findUnique({ where: { id } });
     if (!existing) return sendError(404, "Nota non trovata.");
     await p.note.delete({ where: { id } });
+    return send({ ok: true });
+  }
+
+  if (path === "/api/events") {
+    const fields = validateEventFields(d);
+    if (d.id === undefined) {
+      const created = await p.calendarEvent.create({
+        data: { ...fields, updated_at: BigInt(Date.now()), dirty: true },
+      });
+      return send({ id: created.id });
+    }
+    const id = intId(d.id);
+    const existing = await p.calendarEvent.findUnique({ where: { id } });
+    if (!existing || existing.deleted_at) return sendError(404, "Evento non trovato.");
+    await p.calendarEvent.update({
+      where: { id },
+      data: { ...fields, updated_at: BigInt(Date.now()), dirty: true },
+    });
+    return send({ ok: true });
+  }
+
+  if (path === "/api/events/delete") {
+    const id = intId(d.id);
+    const existing = await p.calendarEvent.findUnique({ where: { id } });
+    if (!existing || existing.deleted_at) return sendError(404, "Evento non trovato.");
+    const stamp = utcStamp();
+    await p.calendarEvent.update({
+      where: { id },
+      data: { deleted_at: stamp, updated_at: BigInt(Date.now()), dirty: true },
+    });
+    await p.eventLink.updateMany({
+      where: { event_id: id },
+      data: { dirty: true, deleted_at: stamp },
+    });
     return send({ ok: true });
   }
 

@@ -98,7 +98,7 @@ export async function createAppointment(
     if (!found) {
       throw new Invalid("Questo orario non è più disponibile. Scegline un altro.");
     }
-    await tx.appointment.create({
+    const created = await tx.appointment.create({
       data: {
         name: required(data, "name"),
         email: email(data),
@@ -106,6 +106,18 @@ export async function createAppointment(
         start: found.start,
         end: found.end,
         cancel_token: token,
+      },
+    });
+    // Proiezione nel calendario: l'appuntamento prenotato diventa evento
+    // locale (da spingere ai provider collegati alla prima sincronizzazione).
+    await tx.calendarEvent.create({
+      data: {
+        title: `Appuntamento: ${created.name}`,
+        start: created.start,
+        end: created.end,
+        appointment_id: created.id,
+        updated_at: BigInt(Date.now()),
+        dirty: true,
       },
     });
     return { start: found.start, end: found.end, cancel_token: token };
