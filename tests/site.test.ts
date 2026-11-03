@@ -64,6 +64,32 @@ describe("routing sito", () => {
     const app = await get("/app.js");
     expect(app.status).toBe(200);
   });
+
+  it("la home ha le sezioni del sito freelance", async () => {
+    const r = await get("/");
+    expect(r.text).toContain("01 / SERVIZI");
+    expect(r.text).toContain("Area riservata");
+    expect(r.text).toContain("REALINDI SYSTEMS");
+  });
+
+  it("nessuna risorsa esterna caricata da script o fogli di stile (CSP)", async () => {
+    const home = await get("/");
+    expect(home.text).not.toMatch(/<(script|link)[^>]+(src|href)=["']https?:/);
+    const bio = await get("/bio");
+    expect(bio.text).not.toMatch(/<(script|link)[^>]+(src|href)=["']https?:/);
+  });
+
+  it("la pagina bio ha il mount dei link e carica site.js", async () => {
+    const r = await get("/bio");
+    expect(r.text).toContain('id="bio-links"');
+    expect(r.text).toContain('<script src="/site.js"></script>');
+  });
+
+  it("site.css dichiara i token neo-brutalist", async () => {
+    const css = await get("/site.css");
+    expect(css.text).toContain("--green:#276247");
+    expect(css.text).toContain("--lime:#d2ed98");
+  });
 });
 
 describe("GET /api/site", () => {
