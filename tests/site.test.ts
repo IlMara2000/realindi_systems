@@ -4,6 +4,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { startServer, type RunningServer } from "../scripts/dev-server.js";
 // Side-effect: carica DATABASE_URL_TEST da .env come helpers.ts.
 import "./helpers.js";
+import { makeClient, resetDb } from "./helpers.js";
 
 let server: RunningServer;
 let base: string;
@@ -62,5 +63,70 @@ describe("routing sito", () => {
     expect(legacy.status).toBe(200);
     const app = await get("/app.js");
     expect(app.status).toBe(200);
+  });
+});
+
+describe("GET /api/site", () => {
+  it("è pubblico, riporta il path di prenotazione e la bio vuota", async () => {
+    await resetDb();
+    const res = await fetch(base + "/api/site");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.booking_path).toMatch(/^\/book\//);
+    expect(body.bio.links).toEqual([]);
+    expect(typeof body.bio.tagline).toBe("string");
+  });
+});
+
+describe("POST /api/site", () => {
+  it("senza sessione non salva (convenzione POST: 400)", async () => {
+    const res = await fetch(base + "/api/site", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bio: { tagline: "x", links: [] } }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("salva e restituisce i link bio validati", async () => {
+    await resetDb();
+    const c = makeClient(base);
+    const setup = await c.setup();
+    expect(setup.status).toBe(200);
+
+    const valid = {
+      bio: {
+        tagline: "Sviluppo su misura",
+        links: [
+          { id: "l1", label: "Sito", url: "https://realindi-systems.vercel.app", section: "main", visible: true, order: 0 },
+          { id: "l2", label: "Instagram", url: "https://instagram.com/realindi", section: "socials", visible: true, order: 0 },
+        ],
+      },
+    };
+    const saved = await c.request("/api/site", valid);
+    expect(saved.status).toBe(200);
+
+    const res = await fetch(base + "/api/site");
+    const body = await res.json();
+    expect(body.bio.tagline).toBe("Sviluppo su misura");
+    expect(body.bio.links).toHaveLength(2);
+    expect(body.bio.links[0].label).toBe("Sito");
+    expect(body.bio.links[1].section).toBe("socials");
+  });
+
+  it("rifiuta URL non http(s) e sezioni sconosciute", async () => {
+    await resetDb();
+    const c = makeClient(base);
+    await c.setup();
+
+    const xss = await c.request("/api/site", {
+      bio: { tagline: "x", links: [{ id: "l1", label: "cattivo", url: "javascript:alert(1)", section: "main", visible: true, order: 0 }] },
+    });
+    expect(xss.status).toBe(400);
+
+    const badSection = await c.request("/api/site", {
+      bio: { tagline: "x", links: [{ id: "l1", label: "ok", url: "https://example.com", section: "altro", visible: true, order: 0 }] },
+    });
+    expect(badSection.status).toBe(400);
   });
 });

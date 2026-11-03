@@ -119,6 +119,60 @@ function parseQuery(raw: string): URLSearchParams {
   return new URLSearchParams(raw);
 }
 
+// ---------------------------------------------------------------------- bio
+// Contenuti del sito pubblico (link-in-bio): salvati in settings (site_bio).
+
+const BIO_SECTIONS = new Set(["main", "socials", "contacts"]);
+
+function defaultBio() {
+  return {
+    tagline: "REALINDI SYSTEMS — sviluppo software, consulenza e automazione.",
+    links: [] as Array<{ id: string; label: string; url: string; section: string; visible: boolean; order: number }>,
+  };
+}
+
+async function getBio(): Promise<ReturnType<typeof defaultBio>> {
+  const row = await prisma().setting.findUnique({ where: { key: "site_bio" } });
+  if (!row) return defaultBio();
+  try {
+    const parsed = JSON.parse(row.value);
+    if (!parsed || typeof parsed !== "object") return defaultBio();
+    return {
+      tagline: typeof parsed.tagline === "string" ? parsed.tagline : defaultBio().tagline,
+      links: Array.isArray(parsed.links) ? parsed.links : [],
+    };
+  } catch {
+    return defaultBio();
+  }
+}
+
+function validateBio(raw: unknown): ReturnType<typeof defaultBio> {
+  if (!raw || typeof raw !== "object") throw new Invalid("Dati della bio non validi.");
+  const input = raw as Record<string, unknown>;
+  const tagline = typeof input.tagline === "string" ? input.tagline : "";
+  if (tagline.length > 300) throw new Invalid("Tagline troppo lunga (max 300 caratteri).");
+  if (!Array.isArray(input.links) || input.links.length > 30) {
+    throw new Invalid("Elenco link non valido (max 30 voci).");
+  }
+  const links = input.links.map((item, i) => {
+    if (!item || typeof item !== "object") throw new Invalid("Link non valido.");
+    const l = item as Record<string, unknown>;
+    const label = typeof l.label === "string" ? l.label.trim() : "";
+    const url = typeof l.url === "string" ? l.url.trim() : "";
+    const section = typeof l.section === "string" ? l.section : "";
+    if (!label || label.length > 80) throw new Invalid("Etichetta del link non valida (1-80 caratteri).");
+    if (url.length > 500 || !/^https?:\/\//.test(url)) {
+      throw new Invalid("URL del link non valido: deve iniziare con http:// o https://.");
+    }
+    if (!BIO_SECTIONS.has(section)) throw new Invalid("Sezione del link non valida.");
+    const id = typeof l.id === "string" && l.id.length > 0 && l.id.length <= 64 ? l.id : `link-${i + 1}`;
+    const order = Number.isInteger(l.order) ? (l.order as number) : i;
+    const visible = typeof l.visible === "boolean" ? l.visible : true;
+    return { id, label, url, section, visible, order };
+  });
+  return { tagline, links };
+}
+
 // ---------------------------------------------------------------------- GET
 
 async function handleGet(req: HandlerRequest): Promise<HandlerResponse> {
@@ -148,6 +202,12 @@ async function handleGet(req: HandlerRequest): Promise<HandlerResponse> {
     const day = parseQuery(req.query).get("day");
     if (day) info.slots = await available(day);
     return send(info);
+  }
+
+  if (path === "/api/site") {
+    const s = await settings();
+    const bio = await getBio();
+    return send({ booking_path: `/book/${s.booking_slug}`, bio });
   }
 
   const token = parseCookie(req.headers.cookie, "crm_session");
@@ -358,6 +418,17 @@ async function handlePost(req: HandlerRequest): Promise<HandlerResponse> {
   // ------------------------------------------------------------ autenticati
   const sessionToken = parseCookie(req.headers.cookie, "crm_session");
   if (!(await auth(sessionToken))) throw new Invalid("Sessione scaduta. Accedi di nuovo.");
+
+  if (path === "/api/site") {
+    const bio = validateBio(d.bio);
+    const value = JSON.stringify(bio);
+    await p.setting.upsert({
+      where: { key: "site_bio" },
+      update: { value },
+      create: { key: "site_bio", value },
+    });
+    return send({ ok: true });
+  }
 
   if (path === "/api/logout") {
     await destroySession(sessionToken);
