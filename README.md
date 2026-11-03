@@ -1,6 +1,43 @@
 # REALINDI SYSTEMS — Freelancer workspace
 
-CRM in italiano per consulenti e sviluppatori indipendenti, con profilo fiscale configurabile dall’azienda. Backend Python, SQLite e interfaccia responsive; lxml convalida gli XML contro lo schema FatturaPA ufficiale incluso. L’obiettivo è un prodotto vendibile: la versione attuale separa le aziende tramite installazioni/database indipendenti, non tramite account multi-tenant nella stessa istanza.
+CRM in italiano per consulenti e sviluppatori indipendenti, con profilo fiscale configurabile dall’azienda. L’obiettivo è un prodotto vendibile: la versione attuale separa le aziende tramite installazioni/database indipendenti, non tramite account multi-tenant nella stessa istanza.
+
+## Versione attuale: sito + gestionale (TypeScript/Vercel)
+
+Il repository contiene la versione deployata su Vercel (`realindi-systems.vercel.app`): SPA statica TypeScript + Prisma/PostgreSQL con interfaccia neomorfista/brutalista. La documentazione Python qui sotto descrive la versione originale del progetto.
+
+| Percorso | Contenuto |
+|---|---|
+| `/` | Sito pubblico da freelancer (servizi, profilo, contatti) |
+| `/bio` | Link-in-bio con i link configurati in Impostazioni → Sito & Bio |
+| `/book/<slug>` | Pagina di prenotazione pubblica (senza login) |
+| `/app` | Gestionale CRM (login con password del workspace) |
+
+Oltre alle funzioni originarie, il gestionale include **Note** (CRUD, pin, aggancio a cliente/progetto, invio email) e **Calendario/Planner** (vista mensile, eventi, sincronizzazione bidirezionale con Google Calendar e Apple iCloud).
+
+### Integrazioni Google e Apple
+
+Variabili d’ambiente (opzionali; senza di esse le integrazioni restano disattivate):
+
+| Variabile | Uso |
+|---|---|
+| `DATABASE_URL` | Connessione PostgreSQL (Prisma) |
+| `DATABASE_URL_TEST` | Database usato dalla suite di test |
+| `INTEGRATIONS_KEY` | Chiave per cifrare (AES-256-GCM) le credenziali Google/Apple salvate: generane una lunga e casuale e non cambiarla mai dopo il primo collegamento |
+| `GOOGLE_CLIENT_ID` | Client OAuth di Google Cloud |
+| `GOOGLE_CLIENT_SECRET` | Segreto OAuth di Google Cloud |
+
+**Google (Calendar + Gmail):** crea un progetto su console.cloud.google.com, attiva le API *Google Calendar* e *Gmail*, crea una credenziale OAuth client di tipo *Web application* con tra i redirect URI autorizzati `https://<dominio>/api/integrations/google/callback`, poi imposta le tre variabili. In Impostazioni → Integrazioni premi **Collega Google**; l’app è in Production, quindi i primi accessi vanno autorizzati utente per utente. Google serve per la sincronizzazione del calendario e per leggere l’inbox Gmail.
+
+**Apple (iCloud — SMTP/IMAP):** su account.apple.com → Accesso e sicurezza → crea una *password specifica per le app*; in Impostazioni → Integrazioni compila Apple ID, password specifica e mittente. Il server verifica il login IMAP prima di salvare (le credenziali restano cifrate e non vengono mai rilette dall’interfaccia). L’invio delle email usa solo Apple SMTP.
+
+### Verifiche (versione TypeScript)
+
+```sh
+npm test          # suite Vitest
+npx tsc --noEmit  # controllo tipi
+npm run build     # generate + db push + tsc
+```
 
 ## Avvio
 
