@@ -51,6 +51,7 @@ import {
   saveApple,
   removeApple,
 } from "./integrations.js";
+import { runSync } from "./sync.js";
 
 export interface HandlerRequest {
   method: string;
@@ -561,6 +562,10 @@ async function handlePost(req: HandlerRequest): Promise<HandlerResponse> {
   if (path === "/api/integrations/apple/delete") {
     await removeApple();
     return send({ ok: true });
+  }
+
+  if (path === "/api/sync/calendar") {
+    return send(await runSync());
   }
 
   if (path === "/api/logout") {
