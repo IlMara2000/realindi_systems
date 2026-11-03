@@ -147,3 +147,53 @@ model LoginAttempt {
   reset Float
   @@map("login_attempts")
 }
+
+// Sezioni nuove: Note e Calendario/Planner (spec 2026-11-03).
+model Note {
+  id         Int     @id @default(autoincrement())
+  title      String
+  body       String  @default("")
+  pinned     Boolean @default(false)
+  client_id  Int?
+  project_id Int?
+  created_at String  @default(dbgenerated("to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD HH24:MI:SS')"))
+  updated_at String  @default(dbgenerated("to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD HH24:MI:SS')"))
+  @@map("notes")
+}
+
+model CalendarEvent {
+  id            Int     @id @default(autoincrement())
+  title         String
+  start         String
+  end           String
+  all_day       Boolean @default(false)
+  description   String?
+  location      String?
+  updated_at    BigInt
+  dirty         Boolean @default(true)
+  deleted_at    String?
+  appointment_id Int?
+  @@map("calendar_events")
+}
+
+// Un evento può vivere su più provider: ogni riga è il legame con uno di essi.
+model EventLink {
+  id          Int     @id @default(autoincrement())
+  event_id    Int
+  source      String
+  external_id String
+  etag        String?
+  dirty       Boolean @default(true)
+  deleted_at  String?
+  @@unique([source, external_id])
+  @@map("event_links")
+}
+
+// Stato di sincronizzazione per provider (syncToken Google, path CalDAV).
+model SyncState {
+  provider      String  @id
+  token         String?
+  calendar_path String?
+  last_sync_at  String?
+  @@map("sync_state")
+}
