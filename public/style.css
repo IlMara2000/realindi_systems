@@ -1546,43 +1546,6 @@ dialog::backdrop {
   }
 }
 
-/* Editor link bio (Impostazioni → Sito & Bio) */
-.link-row {
-  display: grid;
-  grid-template-columns: 1.2fr 2fr 0.9fr auto auto;
-  gap: 8px;
-  align-items: center;
-  padding: 8px 0;
-  border-bottom: 1px dashed var(--line);
-}
-.link-row:last-child {
-  border-bottom: 0;
-}
-.link-vis {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  color: var(--muted);
-  margin: 0;
-  white-space: nowrap;
-}
-.link-tools {
-  display: flex;
-  gap: 5px;
-}
-.link-tools button {
-  padding: 7px 9px;
-}
-@media (max-width: 850px) {
-  .link-row {
-    grid-template-columns: 1fr 1fr;
-  }
-  .link-tools {
-    grid-column: 2;
-    justify-content: flex-end;
-  }
-}
 /* ===================================================== SKIN: NEUMORPHISM
    Solo a schermo: la stampa di fatture e preventivi resta com'era.
    Regola generale: via i bordi, entrano rilievo (--raised) per i contenitori

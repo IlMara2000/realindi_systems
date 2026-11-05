@@ -806,33 +806,8 @@ function planner() {
     )
   );
 }
-function linkRow(l = {}) {
-  const sections = [
-    ["main", "Principale"],
-    ["socials", "Social"],
-    ["contacts", "Contatti"],
-  ];
-  return `<div class="link-row" data-id="${esc(l.id || "")}"><input name="link_label" type="text" placeholder="Titolo" value="${esc(
-    l.label || "",
-  )}" maxlength="80" aria-label="Titolo link"><input name="link_url" type="url" placeholder="https://…" value="${esc(
-    l.url || "",
-  )}" maxlength="500" aria-label="URL link"><select name="link_section" aria-label="Sezione">${sections
-    .map(
-      ([v, t]) =>
-        `<option value="${v}" ${(l.section || "main") === v ? "selected" : ""}>${t}</option>`,
-    )
-    .join("")}</select><label class="link-vis"><input name="link_visible" type="checkbox" ${
-      l.visible === false ? "" : "checked"
-    }> visibile</label><div class="link-tools">${btn("↑", "link-up", "", "secondary small")}${btn(
-      "↓",
-      "link-down",
-      "",
-      "secondary small",
-    )}${btn("×", "link-remove", "", "secondary small danger")}</div></div>`;
-}
 function settingsView() {
   const s = state.settings;
-  const bio = state.bio || { tagline: "", links: [] };
   const integ = state.integrations || { google: {}, apple: {} };
   const chip = (cls, text) => `<span class="provider-chip ${cls}">${text}</span>`;
   const integChips = `<div class="sync-row">${chip(
@@ -896,27 +871,8 @@ function settingsView() {
       "Integrazioni",
       `<div class="panel-body">${integChips}${googleBlock}${appleBlock}</div>`,
     )}</div><div class="section-gap">${panel(
-      "Sito &amp; Bio",
-      `<form id="site-form"><div class="panel-body form-grid">${field(
-        "Tagline",
-        "tagline",
-        "text",
-        bio.tagline,
-        'maxlength="300"',
-      )}${field(
-        "Link di prenotazione",
-        "booking_path",
-        "text",
-        bookingUrl(),
-        "readonly",
-      )}<div class="field full"><label>Link in evidenza</label><div id="bio-links">${bio.links
-        .map(linkRow)
-        .join("")}</div><div class="section-gap">${btn(
-        "+ Aggiungi link",
-        "link-add",
-        "",
-        "secondary small",
-      )}</div><p class="hint">Titolo, URL (http/https), sezione e visibilità. L'ordine delle righe è l'ordine sul sito.</p></div></div><div class="error" role="alert"></div><div class="form-actions"><a class="secondary" href="/bio" target="_blank" rel="noopener">Anteprima /bio ↗</a><button class="primary" type="submit">Salva sito e bio</button></div></form>`,
+      "Sito",
+      `<div class="panel-body form-grid">${field("Link di prenotazione", "booking_path", "text", bookingUrl(), "readonly")}<p class="hint">Il link in bio si modifica direttamente dalla pagina <a href="/bio">/bio</a>, con il pulsante «Modifica» che compare quando la sessione è aperta.</p></div>`,
     )}</div>`
   );
 }
@@ -970,35 +926,6 @@ function bindView() {
         await api("/api/integrations/apple", d);
         await refresh();
         toast("Collegamento Apple salvato.");
-      } catch (err) {
-        $(".error", f).textContent = err.message;
-      } finally {
-        b.disabled = false;
-      }
-    };
-  if ($("#site-form"))
-    $("#site-form").onsubmit = async (e) => {
-      e.preventDefault();
-      const f = e.target;
-      const links = $$(".link-row", f)
-        .map((row) => ({
-          id: row.dataset.id || undefined,
-          label: $("[name=link_label]", row).value.trim(),
-          url: $("[name=link_url]", row).value.trim(),
-          section: $("[name=link_section]", row).value,
-          visible: $("[name=link_visible]", row).checked,
-        }))
-        .filter((l) => l.label && l.url)
-        .map((l, i) => ({ ...l, order: i }));
-      const b = $("[type=submit]", f);
-      b.disabled = true;
-      $(".error", f).textContent = "";
-      try {
-        await api("/api/site", {
-          bio: { tagline: f.tagline.value.trim(), links },
-        });
-        await refresh();
-        toast("Sito e bio aggiornati.");
       } catch (err) {
         $(".error", f).textContent = err.message;
       } finally {
@@ -1318,24 +1245,6 @@ document.addEventListener("click", async (e) => {
       await api("/api/integrations/apple/delete", {});
       await refresh();
       return toast("Apple disconnesso.");
-    }
-    if (a === "link-add") {
-      $("#bio-links").insertAdjacentHTML("beforeend", linkRow());
-      return;
-    }
-    if (a === "link-up" || a === "link-down") {
-      const row = b.closest(".link-row");
-      const sib = a === "link-up" ? row.previousElementSibling : row.nextElementSibling;
-      if (sib)
-        row.parentNode.insertBefore(
-          a === "link-up" ? row : sib,
-          a === "link-up" ? sib : row,
-        );
-      return;
-    }
-    if (a === "link-remove") {
-      b.closest(".link-row").remove();
-      return;
     }
     if (a === "new-note") return noteModal();
     if (a === "edit-note") return noteModal(id);

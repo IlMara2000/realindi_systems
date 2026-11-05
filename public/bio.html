@@ -23,8 +23,24 @@
 
       <nav id="bio-links" aria-label="Link di REALINDI SYSTEMS"></nav>
 
+      <form id="bio-editor" class="bio-editor" hidden>
+        <div class="bio-field">
+          <label for="bio-tagline-input">Tagline</label>
+          <input id="bio-tagline-input" name="tagline" type="text" maxlength="300" autocomplete="off" placeholder="Una riga su cosa fai" />
+        </div>
+        <div id="bio-editor-links" class="bio-editor-links"></div>
+        <p class="bio-editor-hint">L'ordine delle righe è l'ordine sul sito. I link non visibili restano salvati ma non compaiono qui fuori.</p>
+        <div class="bio-editor-actions">
+          <button type="button" id="bio-add" class="btn btn-dark">+ Aggiungi link</button>
+          <button type="submit" class="btn btn-primary">Salva</button>
+          <button type="button" id="bio-cancel" class="btn btn-ghost">Annulla</button>
+        </div>
+        <p id="bio-editor-error" class="bio-editor-error" role="alert"></p>
+      </form>
+
       <div class="bio-actions">
         <button type="button" id="bio-copy" class="btn btn-dark">Copia link</button>
+        <button type="button" id="bio-edit" class="btn btn-ghost" hidden>Modifica</button>
         <span id="bio-feedback" role="status" aria-live="polite"></span>
       </div>
 

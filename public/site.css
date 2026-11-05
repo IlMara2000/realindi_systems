@@ -642,6 +642,7 @@ img {
 
 .bio-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 1rem;
   align-items: center;
   justify-content: center;
@@ -653,6 +654,134 @@ img {
   font-size: 0.76rem;
   color: var(--accent-ink);
   min-height: 1em;
+}
+
+/* ------------------------------------------- modifica diretta (solo titolare) */
+/* Compare solo con la sessione del gestionale aperta: nessun pannello nel CRM,
+   si edita qui e si salva su /api/site. Tutto a rilievo/incavo, senza bordi. */
+.bio-editor {
+  margin-top: 1.8rem;
+  padding: 1.2rem;
+  border-radius: 26px;
+  background: var(--surface);
+  box-shadow: var(--inset);
+}
+
+.bio-editor[hidden] {
+  display: none;
+}
+
+.bio-field {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 1.1rem;
+}
+
+.bio-field label,
+.bio-edit-vis {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.bio-editor input[type="text"],
+.bio-editor input[type="url"],
+.bio-editor select {
+  width: 100%;
+  padding: 0.8rem 0.9rem;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--ink);
+  background: var(--surface);
+  border: 0;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--inset-sm);
+}
+
+.bio-editor input:focus-visible,
+.bio-editor select:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 2px;
+}
+
+.bio-editor-links {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.bio-edit-row {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.9rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--raised-sm);
+}
+
+.bio-edit-vis {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+}
+
+.bio-edit-vis input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent-ink);
+}
+
+.bio-edit-tools {
+  display: flex;
+  gap: 0.4rem;
+  justify-content: flex-end;
+}
+
+.bio-tool {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--muted);
+  background: var(--surface);
+  border: 0;
+  border-radius: 12px;
+  box-shadow: var(--raised-sm);
+  cursor: pointer;
+}
+
+.bio-tool:hover {
+  color: var(--accent-ink);
+}
+
+.bio-tool:active {
+  box-shadow: var(--inset-sm);
+}
+
+.bio-editor-hint {
+  margin: 0.9rem 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.bio-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.bio-editor-error {
+  margin: 0.8rem 0 0;
+  min-height: 1em;
+  font-size: 0.8rem;
+  color: #b4372c;
 }
 
 .bio-back {
