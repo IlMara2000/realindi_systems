@@ -1,0 +1,66 @@
+# Typecheck e suite completa a ogni push.
+#
+# I test non girano su un finto database: tests/global-setup.ts crea un
+# database Postgres dedicato per ogni esecuzione e lo elimina alla fine, quindi
+# il job avvia un servizio Postgres vero e lascia che ci crei e cancelli i
+# database delle run. La suite esegue i file in serie (fileParallelism: false),
+# quindi non servono più servizi né più job paralleli.
+name: Verifica
+
+on:
+  push:
+
+# Un push nuovo sulla stessa ref annulla la run precedente: non ha senso
+# aspettare la coda per una versione del codice già superata.
+concurrency:
+  group: verifica-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verifica:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # Il database "madre": global-setup.ts crea accanto a questo i database
+      # realindi_test_run_* delle singole esecuzioni.
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      DATABASE_URL_TEST: postgresql://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Stessa major del runtime usato in sviluppo (node:sqlite nei test
+          # richiede Node 24 per non avere flag sperimentali).
+          node-version: 24
+          cache: npm
+
+      - name: Dipendenze
+        run: npm ci
+
+      - name: Client Prisma e configurazione
+        run: |
+          # generated/ è escluso dal versionamento: senza questo passo né il
+          # typecheck né i test troverebbero il client.
+          npm run generate
+          # global-setup.ts legge DATABASE_URL_TEST dal file .env, che in CI
+          # non esiste perché è ignorato da git.
+          printf 'DATABASE_URL=%s\nDATABASE_URL_TEST=%s\n' "$DATABASE_URL" "$DATABASE_URL_TEST" > .env
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Test
+        run: npm test

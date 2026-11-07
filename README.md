@@ -1,5 +1,7 @@
 # REALINDI SYSTEMS — Freelancer workspace
 
+[![Verifica](https://github.com/IlMara2000/realindi_systems/actions/workflows/verifica.yml/badge.svg)](https://github.com/IlMara2000/realindi_systems/actions/workflows/verifica.yml)
+
 CRM in italiano per consulenti e sviluppatori indipendenti, con profilo fiscale configurabile dall’azienda. L’obiettivo è un prodotto vendibile: la versione attuale separa le aziende tramite installazioni/database indipendenti, non tramite account multi-tenant nella stessa istanza.
 
 ## Versione attuale: sito + gestionale (TypeScript/Vercel)
