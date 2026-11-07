@@ -105,6 +105,7 @@ describe("integrazioni", () => {
   });
 
   it("status senza configurazione: tutto scollegato, nessun segreto nel payload", async () => {
+    vi.stubEnv("INTEGRATIONS_KEY", "");
     const c = await fresh();
     const r = await c.request("/api/integrations/status");
     expect(r.status).toBe(200);

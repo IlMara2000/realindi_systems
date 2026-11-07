@@ -32,6 +32,7 @@ import {
   iso,
   sha256Bytes,
   sha256Hex,
+  timingSafeEqualStr,
   tokenHex,
   todayRome,
 } from "./util.js";
@@ -54,6 +55,33 @@ import {
 import { runSync } from "./sync.js";
 import { emitReceipt, listReceipts, validateReceiptFields } from "./receipts.js";
 import { sendMail, validateOutgoing, readInbox } from "./email.js";
+import {
+  PROVIDERS,
+  channelCredentials,
+  listChannels,
+  normalizePhone,
+  parseInstagramWebhook,
+  parseWhatsAppWebhook,
+  saveChannel,
+  sendChannelMessage,
+  verifyChannel,
+  verifyMetaSignature,
+  verifyTwilioSignature,
+} from "./channels.js";
+import {
+  assistantSettings,
+  generateReply,
+  knowledgeSummary,
+  saveAssistantKey,
+  trainFromSite,
+} from "./assistant.js";
+import {
+  conversationThread,
+  ingestInbound,
+  listConversations,
+  sendManualReply,
+  setConversationState,
+} from "./messaging.js";
 
 export interface HandlerRequest {
   method: string;
@@ -126,11 +154,47 @@ const STATIC_FILES = new Set([
   "/assets/app-touch.png",
 ]);
 
+const EDIT_SLOT_RE = /<!--\s*edit-slot:([a-z-]+)\s*-->/g;
+
+/**
+ * Vetrina e link-in-bio sono pagine pubbliche che diventano editor per il
+ * titolare. I bottoni di modifica non esistono nel markup servito a chi non ha
+ * la sessione: vengono iniettati qui, lato server, al posto dei segnaposto.
+ * Nasconderli con il CSS non basta, e l'endpoint di salvataggio ricontrolla
+ * comunque la sessione.
+ */
+function serveEditablePage(file: string, authenticated: boolean): HandlerResponse {
+  let html: string;
+  try {
+    html = readFileSync(new URL(`../public/${file}`, import.meta.url), "utf8");
+  } catch {
+    return sendError(404, "Pagina non trovata.");
+  }
+  html = html.replace(EDIT_SLOT_RE, (_match, slot: string) =>
+    authenticated
+      ? `<button type="button" class="site-edit" data-edit="${slot}">Modifica</button>`
+      : "",
+  );
+  return send(Buffer.from(html, "utf8"), 200, MIME[file]);
+}
+
+/**
+ * La vetrina resta un sito pubblico: se il database non risponde la pagina
+ * viene servita senza bottoni, non con un errore. L'autorizzazione vera sta
+ * comunque sull'endpoint di salvataggio.
+ */
+async function editorSession(token: string | null): Promise<boolean> {
+  if (!token) return false;
+  try {
+    return await auth(token);
+  } catch {
+    return false;
+  }
+}
+
 function serveStatic(path: string): HandlerResponse | null {
   let file: string | null = null;
-  if (path === "/") file = "index.html";
-  else if (path === "/bio") file = "bio.html";
-  else if (path === "/app" || path.startsWith("/book/")) file = "app.html";
+  if (path === "/app" || path.startsWith("/book/")) file = "app.html";
   else if (STATIC_FILES.has(path)) file = path.slice(1);
   if (!file) return null;
   try {
@@ -153,33 +217,215 @@ function originOf(req: HandlerRequest): string {
   return `${proto}://${host}`;
 }
 
-// Contenuti del sito pubblico (link-in-bio): salvati in settings (site_bio).
+// Origine vista dal browser: in locale il proxy non manda x-forwarded-proto e
+// senza questo l'addestramento leggerebbe https://127.0.0.1 (TLS assente).
+function requestOrigin(req: HandlerRequest): string {
+  const origin = req.headers.origin;
+  if (origin) {
+    try {
+      const url = new URL(origin);
+      if (url.protocol === "http:" || url.protocol === "https:") return url.origin;
+    } catch {
+      // header non valido: si usa l'origine dedotta dall'host
+    }
+  }
+  return originOf(req);
+}
+
+// Contenuti del sito pubblico: la vetrina (`site_content`) e il link-in-bio
+// (`site_bio`). Il server non custodisce una configurazione di base: finché il
+// titolare non salva, la pagina mostra il contenuto scritto nell'HTML; dal primo
+// salvataggio il record precedente viene sostituito per intero, così niente
+// della base sopravvive e nessun campo può riemergere da un valore predefinito.
 
 const BIO_SECTIONS = new Set(["main", "socials", "contacts"]);
 
-function defaultBio() {
-  return {
-    tagline: "REALINDI SYSTEMS — sviluppo software, consulenza e automazione.",
-    links: [] as Array<{ id: string; label: string; url: string; section: string; visible: boolean; order: number }>,
-  };
+interface BioLink {
+  id: string;
+  label: string;
+  url: string;
+  section: string;
+  visible: boolean;
+  order: number;
 }
 
-async function getBio(): Promise<ReturnType<typeof defaultBio>> {
-  const row = await prisma().setting.findUnique({ where: { key: "site_bio" } });
-  if (!row) return defaultBio();
+interface Bio {
+  tagline: string;
+  links: BioLink[];
+}
+
+interface SiteService {
+  title: string;
+  body: string;
+}
+
+interface SiteWork {
+  kicker: string;
+  title: string;
+  body: string;
+}
+
+/** Tutti i dettagli modificabili della vetrina, in un unico record. */
+interface SiteContent {
+  brand: string;
+  ticker: string;
+  hero: {
+    label: string;
+    title1: string;
+    title2: string;
+    emphasis: string;
+    lead: string;
+    cta_primary: string;
+    cta_secondary: string;
+  };
+  services: { label: string; title1: string; title2: string; items: SiteService[] };
+  about: {
+    label: string;
+    title1: string;
+    title2: string;
+    intro: string;
+    paragraphs: string[];
+    facts: string[];
+  };
+  works: { label: string; title1: string; title2: string; items: SiteWork[] };
+  contacts: { label: string; title1: string; title2: string; paragraphs: string[]; secondary: string };
+  footer: string;
+}
+
+/** Lettura grezza: null significa «mai salvato» (resta la pagina iniziale). */
+async function storedSetting(key: string): Promise<unknown | null> {
+  const row = await prisma().setting.findUnique({ where: { key } });
+  if (!row) return null;
   try {
-    const parsed = JSON.parse(row.value);
-    if (!parsed || typeof parsed !== "object") return defaultBio();
-    return {
-      tagline: typeof parsed.tagline === "string" ? parsed.tagline : defaultBio().tagline,
-      links: Array.isArray(parsed.links) ? parsed.links : [],
-    };
+    return JSON.parse(row.value) as unknown;
   } catch {
-    return defaultBio();
+    return null;
   }
 }
 
-function validateBio(raw: unknown): ReturnType<typeof defaultBio> {
+async function getBio(): Promise<Bio | null> {
+  const parsed = await storedSetting("site_bio");
+  if (!parsed || typeof parsed !== "object") return null;
+  const raw = parsed as Record<string, unknown>;
+  return {
+    tagline: typeof raw.tagline === "string" ? raw.tagline : "",
+    links: Array.isArray(raw.links) ? (raw.links as BioLink[]) : [],
+  };
+}
+
+async function getSiteContent(): Promise<SiteContent | null> {
+  const parsed = await storedSetting("site_content");
+  if (!parsed || typeof parsed !== "object") return null;
+  try {
+    return validateSiteContent(parsed);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Sostituzione integrale di un record del sito: la riga precedente viene
+ * eliminata, non aggiornata. Un salvataggio non è mai un merge con la
+ * configurazione che c'era prima.
+ */
+async function replaceSetting(key: string, value: unknown): Promise<void> {
+  const p = prisma();
+  const data = JSON.stringify(value);
+  await p.setting.deleteMany({ where: { key } });
+  await p.setting.create({ data: { key, value: data } });
+}
+
+function siteText(value: unknown, max: number, label: string): string {
+  if (value === undefined || value === null) return "";
+  if (typeof value !== "string") throw new Invalid(`Valore non valido per ${label}.`);
+  const v = value.replace(/\r\n/g, "\n").trim();
+  if (v.length > max) throw new Invalid(`${label}: massimo ${max} caratteri.`);
+  return v;
+}
+
+function siteTextList(value: unknown, max: number, maxItems: number, label: string): string[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) throw new Invalid(`${label}: elenco non valido.`);
+  if (value.length > maxItems) throw new Invalid(`${label}: massimo ${maxItems} voci.`);
+  return value.map((item, i) => siteText(item, max, `${label} ${i + 1}`));
+}
+
+function siteObject(value: unknown, label: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Invalid(`${label}: dati non validi.`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function validateSiteContent(raw: unknown): SiteContent {
+  const root = siteObject(raw, "Contenuto del sito");
+  const hero = siteObject(root.hero, "Testata");
+  const services = siteObject(root.services, "Servizi");
+  const about = siteObject(root.about, "Chi sono");
+  const works = siteObject(root.works, "Lavori");
+  const contacts = siteObject(root.contacts, "Contatti");
+
+  const serviceItems = siteObjectList(services.items, 8, "Servizi");
+  const workItems = siteObjectList(works.items, 8, "Lavori");
+
+  return {
+    brand: siteText(root.brand, 60, "Nome del marchio"),
+    ticker: siteText(root.ticker, 240, "Testo scorrevole"),
+    hero: {
+      label: siteText(hero.label, 120, "Etichetta della testata"),
+      title1: siteText(hero.title1, 160, "Titolo, prima riga"),
+      title2: siteText(hero.title2, 160, "Titolo, seconda riga"),
+      emphasis: siteText(hero.emphasis, 160, "Titolo, parte evidenziata"),
+      lead: siteText(hero.lead, 1200, "Testo introduttivo"),
+      cta_primary: siteText(hero.cta_primary, 60, "Bottone principale"),
+      cta_secondary: siteText(hero.cta_secondary, 60, "Bottone secondario"),
+    },
+    services: {
+      label: siteText(services.label, 120, "Etichetta dei servizi"),
+      title1: siteText(services.title1, 160, "Titolo dei servizi, prima riga"),
+      title2: siteText(services.title2, 160, "Titolo dei servizi, seconda riga"),
+      items: serviceItems.map((item, i) => ({
+        title: siteText(item.title, 80, `Servizio ${i + 1}, titolo`),
+        body: siteText(item.body, 600, `Servizio ${i + 1}, descrizione`),
+      })),
+    },
+    about: {
+      label: siteText(about.label, 120, "Etichetta di chi sono"),
+      title1: siteText(about.title1, 160, "Titolo di chi sono, prima riga"),
+      title2: siteText(about.title2, 160, "Titolo di chi sono, seconda riga"),
+      intro: siteText(about.intro, 600, "Presentazione breve"),
+      paragraphs: siteTextList(about.paragraphs, 900, 8, "Paragrafo"),
+      facts: siteTextList(about.facts, 200, 8, "Punto del metodo"),
+    },
+    works: {
+      label: siteText(works.label, 120, "Etichetta dei lavori"),
+      title1: siteText(works.title1, 160, "Titolo dei lavori, prima riga"),
+      title2: siteText(works.title2, 160, "Titolo dei lavori, seconda riga"),
+      items: workItems.map((item, i) => ({
+        kicker: siteText(item.kicker, 60, `Lavoro ${i + 1}, etichetta`),
+        title: siteText(item.title, 100, `Lavoro ${i + 1}, titolo`),
+        body: siteText(item.body, 600, `Lavoro ${i + 1}, descrizione`),
+      })),
+    },
+    contacts: {
+      label: siteText(contacts.label, 120, "Etichetta dei contatti"),
+      title1: siteText(contacts.title1, 160, "Titolo dei contatti, prima riga"),
+      title2: siteText(contacts.title2, 160, "Titolo dei contatti, seconda riga"),
+      paragraphs: siteTextList(contacts.paragraphs, 900, 8, "Paragrafo dei contatti"),
+      secondary: siteText(contacts.secondary, 60, "Bottone secondario dei contatti"),
+    },
+    footer: siteText(root.footer, 240, "Nota a piè di pagina"),
+  };
+}
+
+function siteObjectList(value: unknown, maxItems: number, label: string): Record<string, unknown>[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) throw new Invalid(`${label}: elenco non valido.`);
+  if (value.length > maxItems) throw new Invalid(`${label}: massimo ${maxItems} voci.`);
+  return value.map((item) => siteObject(item, `${label}: voce`));
+}
+
+function validateBio(raw: unknown): Bio {
   if (!raw || typeof raw !== "object") throw new Invalid("Dati della bio non validi.");
   const input = raw as Record<string, unknown>;
   const tagline = typeof input.tagline === "string" ? input.tagline : "";
@@ -187,7 +433,7 @@ function validateBio(raw: unknown): ReturnType<typeof defaultBio> {
   if (!Array.isArray(input.links) || input.links.length > 30) {
     throw new Invalid("Elenco link non valido (max 30 voci).");
   }
-  const links = input.links.map((item, i) => {
+  const links: BioLink[] = input.links.map((item, i) => {
     if (!item || typeof item !== "object") throw new Invalid("Link non valido.");
     const l = item as Record<string, unknown>;
     const label = typeof l.label === "string" ? l.label.trim() : "";
@@ -209,15 +455,22 @@ function validateBio(raw: unknown): ReturnType<typeof defaultBio> {
 // ---------------------------------------------------------------------- GET
 
 async function handleGet(req: HandlerRequest): Promise<HandlerResponse> {
-  const staticResponse = serveStatic(req.path);
-  if (staticResponse) return staticResponse;
-
   const p = prisma();
   const path = req.path;
+  const token = parseCookie(req.headers.cookie, "crm_session");
+
+  if (path === "/") return serveEditablePage("index.html", await editorSession(token));
+  if (path === "/bio") return serveEditablePage("bio.html", await editorSession(token));
+
+  const staticResponse = serveStatic(path);
+  if (staticResponse) return staticResponse;
 
   if (path === "/api/session") {
     return send({ setup: !(await hasPassword()), authenticated: await auth(parseCookie(req.headers.cookie, "crm_session")) });
   }
+
+  if (path === "/api/webhooks/whatsapp") return metaVerification(req, "whatsapp");
+  if (path === "/api/webhooks/instagram") return metaVerification(req, "instagram");
 
   if (path.startsWith("/api/booking/")) {
     const slug = path.split("/").pop()!;
@@ -239,12 +492,31 @@ async function handleGet(req: HandlerRequest): Promise<HandlerResponse> {
 
   if (path === "/api/site") {
     const s = await settings();
-    const bio = await getBio();
-    return send({ booking_path: `/book/${s.booking_slug}`, bio });
+    return send({
+      booking_path: `/book/${s.booking_slug}`,
+      bio: await getBio(),
+      content: await getSiteContent(),
+    });
   }
 
-  const token = parseCookie(req.headers.cookie, "crm_session");
   if (!(await auth(token))) return sendError(401, "Accedi per continuare.");
+
+  if (path === "/api/channels") {
+    const [channels, assistant, knowledge] = await Promise.all([
+      listChannels(),
+      assistantSettings(),
+      knowledgeSummary(),
+    ]);
+    return send({
+      channels,
+      assistant,
+      knowledge,
+      webhooks: Object.fromEntries(PROVIDERS.map((p) => [p.id, originOf(req) + p.webhook])),
+    });
+  }
+
+  const conversationMatch = /^\/api\/conversations\/(\d+)$/.exec(path);
+  if (conversationMatch) return send(await conversationThread(Number(conversationMatch[1])));
 
   if (path === "/api/ricevute") return send(await listReceipts());
 
@@ -294,6 +566,12 @@ async function handleGet(req: HandlerRequest): Promise<HandlerResponse> {
       delete row.xml;
       return row;
     });
+    const [channels, conversations, assistant, knowledge] = await Promise.all([
+      listChannels(),
+      listConversations(),
+      assistantSettings(),
+      knowledgeSummary(),
+    ]);
     return send({
       clients,
       projects,
@@ -304,9 +582,12 @@ async function handleGet(req: HandlerRequest): Promise<HandlerResponse> {
       blocks,
       notes: await p.note.findMany({ orderBy: [{ pinned: "desc" }, { updated_at: "desc" }] }),
       integrations: await integrationStatus(),
-      bio: await getBio(),
       settings: await settings(),
       fiscal_catalog: fiscal.catalog(),
+      channels,
+      conversations,
+      assistant,
+      knowledge,
     });
   }
 
@@ -409,6 +690,20 @@ function publicUrl(value: unknown): string {
   return v;
 }
 
+const ASSISTANT_SETTINGS_KEYS = [
+  "assistant_enabled",
+  "assistant_name",
+  "assistant_tone",
+  "assistant_language",
+  "assistant_signature",
+  "assistant_notes",
+  "assistant_site_url",
+  "assistant_model",
+  "assistant_base_url",
+  "assistant_max_chars",
+  "assistant_handoff_email",
+] as const;
+
 const INTEGER_SETTINGS: Record<string, [number, number]> = {
   booking_duration: [15, 180],
   booking_start: [0, 23],
@@ -416,6 +711,121 @@ const INTEGER_SETTINGS: Record<string, [number, number]> = {
   booking_notice: [0, 720],
   booking_horizon: [1, 180],
 };
+
+// ------------------------------------------------------------ webhook canali
+
+function twimlResponse(): HandlerResponse {
+  return send(
+    Buffer.from('<?xml version="1.0" encoding="UTF-8"?><Response></Response>', "utf8"),
+    200,
+    "text/xml; charset=utf-8",
+  );
+}
+
+/** Handshake di Meta: confronta hub.verify_token con quello dei canali salvati. */
+async function metaVerification(
+  req: HandlerRequest,
+  provider: "whatsapp" | "instagram",
+): Promise<HandlerResponse> {
+  const q = parseQuery(req.query);
+  if (q.get("hub.mode") !== "subscribe") {
+    return sendError(400, "Verifica webhook non valida.");
+  }
+  const token = q.get("hub.verify_token") ?? "";
+  const channels = await prisma().channel.findMany({ where: { provider } });
+  const match = channels.some((channel) => {
+    const expected = channelCredentials(channel).verify_token ?? "";
+    return expected.length > 0 && timingSafeEqualStr(expected, token);
+  });
+  if (!match) return sendError(403, "Token di verifica non valido.");
+  return send(q.get("hub.challenge") ?? "", 200, "text/plain; charset=utf-8");
+}
+
+async function receiveMetaWebhook(
+  req: HandlerRequest,
+  provider: "whatsapp" | "instagram",
+): Promise<HandlerResponse> {
+  if (req.body.length > 1_000_000) return sendError(413, "Payload troppo grande.");
+  let payload: unknown;
+  try {
+    payload = JSON.parse(req.body.toString("utf8"));
+  } catch {
+    return sendError(400, "Payload non valido.");
+  }
+
+  const p = prisma();
+  const channels = await p.channel.findMany({ where: { provider } });
+  if (!channels.length) return send({ ok: true });
+
+  const appSecret = channels
+    .map((channel) => channelCredentials(channel).app_secret ?? "")
+    .find((secret) => secret.length > 0) ?? "";
+  if (appSecret && !verifyMetaSignature(req.body, req.headers["x-hub-signature-256"], appSecret)) {
+    return sendError(403, "Firma del webhook non valida.");
+  }
+
+  const events = provider === "whatsapp" ? parseWhatsAppWebhook(payload) : parseInstagramWebhook(payload);
+  for (const event of events.slice(0, 10)) {
+    const channel = channels.find((row) => row.external_id === event.externalChannelId);
+    if (!channel) continue;
+    try {
+      await ingestInbound({
+        channel,
+        contact: event.contact,
+        contactName: event.contactName,
+        text: event.text,
+        externalId: event.externalId,
+        kind: event.kind,
+      });
+    } catch (err) {
+      console.error(`Webhook ${provider}:`, err);
+    }
+  }
+  return send({ ok: true });
+}
+
+async function receiveTwilioWebhook(req: HandlerRequest): Promise<HandlerResponse> {
+  const params: Record<string, string> = {};
+  for (const [key, value] of new URLSearchParams(req.body.toString("utf8"))) {
+    params[key] = value;
+  }
+  const channels = await prisma().channel.findMany({ where: { provider: "sms" } });
+  if (!channels.length) return twimlResponse();
+
+  const to = normalizePhone(params.To ?? "");
+  const channel = channels.find((row) => row.external_id === to) ?? channels[0];
+  const authToken = channelCredentials(channel).auth_token ?? "";
+  if (authToken) {
+    const url = originOf(req) + req.path + (req.query ? `?${req.query}` : "");
+    if (!verifyTwilioSignature(url, params, req.headers["x-twilio-signature"], authToken)) {
+      return sendError(403, "Firma del webhook non valida.");
+    }
+  }
+
+  const from = normalizePhone(params.From ?? "");
+  const body = params.Body ?? "";
+  if (from && body.trim()) {
+    try {
+      await ingestInbound({
+        channel,
+        contact: from,
+        text: body,
+        externalId: params.MessageSid,
+        kind: "text",
+      });
+    } catch (err) {
+      console.error("Webhook sms:", err);
+    }
+  }
+  return twimlResponse();
+}
+
+async function handleWebhookPost(req: HandlerRequest): Promise<HandlerResponse | null> {
+  if (req.path === "/api/webhooks/whatsapp") return receiveMetaWebhook(req, "whatsapp");
+  if (req.path === "/api/webhooks/instagram") return receiveMetaWebhook(req, "instagram");
+  if (req.path === "/api/webhooks/sms") return receiveTwilioWebhook(req);
+  return null;
+}
 
 const CLIENT_LIST_FIELDS = ["company", "phone", "vat_number", "address", "notes"];
 const PROJECT_STATUSES = ["discovery", "active", "paused", "completed"];
@@ -437,6 +847,8 @@ async function handlePost(req: HandlerRequest): Promise<HandlerResponse> {
   if (req.headers["sec-fetch-site"] === "cross-site") {
     return sendError(403, "Origine non consentita.");
   }
+  const webhook = await handleWebhookPost(req);
+  if (webhook) return webhook;
   const d = jsonBody(req);
   const path = req.path;
   const p = prisma();
@@ -494,15 +906,170 @@ async function handlePost(req: HandlerRequest): Promise<HandlerResponse> {
   const sessionToken = parseCookie(req.headers.cookie, "crm_session");
   if (!(await auth(sessionToken))) throw new Invalid("Sessione scaduta. Accedi di nuovo.");
 
-  if (path === "/api/site") {
-    const bio = validateBio(d.bio);
-    const value = JSON.stringify(bio);
-    await p.setting.upsert({
-      where: { key: "site_bio" },
-      update: { value },
-      create: { key: "site_bio", value },
-    });
+  // --------------------------------------------------------- canali e assistente
+  if (path === "/api/channels") {
+    return send({ ok: true, ...(await saveChannel(d)) });
+  }
+
+  if (path === "/api/channels/delete") {
+    const id = intId(d.id);
+    const found = await p.channel.findUnique({ where: { id } });
+    if (!found) throw new Invalid("Canale non trovato.");
+    const conversations = await p.conversation.findMany({ where: { channel_id: id }, select: { id: true } });
+    const ids = conversations.map((c) => c.id);
+    if (ids.length) await p.message.deleteMany({ where: { conversation_id: { in: ids } } });
+    await p.conversation.deleteMany({ where: { channel_id: id } });
+    await p.channel.delete({ where: { id } });
     return send({ ok: true });
+  }
+
+  if (path === "/api/channels/verify") {
+    const id = intId(d.id);
+    const channel = await p.channel.findUnique({ where: { id } });
+    if (!channel) throw new Invalid("Canale non trovato.");
+    const verification = await verifyChannel(channel);
+    return send({ ok: verification.ok, verification });
+  }
+
+  if (path === "/api/channels/test") {
+    const id = intId(d.id);
+    const channel = await p.channel.findUnique({ where: { id } });
+    if (!channel) throw new Invalid("Canale non trovato.");
+    const to = typeof d.to === "string" ? d.to.trim() : "";
+    if (!to) throw new Invalid("Indica il destinatario del messaggio di prova.");
+    const message =
+      typeof d.text === "string" && d.text.trim()
+        ? d.text.trim().slice(0, 1000)
+        : "Messaggio di prova dal CRM REALINDI. Se lo ricevi, il canale è collegato correttamente.";
+    try {
+      const sent = await sendChannelMessage(channel, to, message);
+      return send({ ok: true, ...sent });
+    } catch (err) {
+      throw new Invalid(err instanceof Error ? err.message : "Invio di prova non riuscito.");
+    }
+  }
+
+  if (path === "/api/assistant") {
+    const s = await settings();
+    if ("assistant_enabled" in d) {
+      if (typeof d.assistant_enabled !== "boolean") throw new Invalid("Attivazione assistente non valida.");
+      s.assistant_enabled = d.assistant_enabled;
+    }
+    const textKeys: [string, number][] = [
+      ["assistant_name", 80],
+      ["assistant_tone", 40],
+      ["assistant_language", 20],
+      ["assistant_signature", 200],
+      ["assistant_notes", 8000],
+      ["assistant_model", 100],
+      ["assistant_handoff_email", 200],
+    ];
+    for (const [key, max] of textKeys) {
+      if (!(key in d)) continue;
+      if (typeof d[key] !== "string") throw new Invalid("Valore non valido.");
+      s[key] = (d[key] as string).trim().slice(0, max);
+    }
+    if ("assistant_max_chars" in d) {
+      const n = numberValue(d.assistant_max_chars, 200, 2000);
+      if (!n.isInteger()) throw new Invalid("La lunghezza massima deve essere un numero intero.");
+      s.assistant_max_chars = n.toNumber();
+    }
+    for (const key of ["assistant_base_url", "assistant_site_url"] as const) {
+      if (!(key in d)) continue;
+      const raw = typeof d[key] === "string" ? (d[key] as string).trim() : "";
+      if (!raw) {
+        s[key] = "";
+        continue;
+      }
+      let url: URL;
+      try {
+        url = new URL(raw);
+      } catch {
+        throw new Invalid("Indirizzo non valido: usa un URL completo (https://…).");
+      }
+      if (url.protocol !== "http:" && url.protocol !== "https:") {
+        throw new Invalid("L'indirizzo deve usare http o https.");
+      }
+      s[key] = url.toString().replace(/\/+$/, "");
+    }
+    if (
+      typeof s.assistant_handoff_email === "string" &&
+      s.assistant_handoff_email &&
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.assistant_handoff_email)
+    ) {
+      throw new Invalid("Email di recapito non valida.");
+    }
+    for (const key of ASSISTANT_SETTINGS_KEYS) {
+      await p.setting.upsert({
+        where: { key },
+        update: { value: JSON.stringify(s[key]) },
+        create: { key, value: JSON.stringify(s[key]) },
+      });
+    }
+    if (d.remove_key === true) await saveAssistantKey("");
+    if (typeof d.api_key === "string" && d.api_key.trim()) await saveAssistantKey(d.api_key);
+    return send({ ok: true, assistant: await assistantSettings() });
+  }
+
+  if (path === "/api/assistant/train") {
+    let explicit = "";
+    if (typeof d.site_url === "string" && d.site_url.trim()) {
+      let url: URL;
+      try {
+        url = new URL(d.site_url.trim());
+      } catch {
+        throw new Invalid("Indirizzo del sito non valido.");
+      }
+      if (url.protocol !== "http:" && url.protocol !== "https:") {
+        throw new Invalid("Il sito deve usare http o https.");
+      }
+      explicit = url.toString().replace(/\/+$/, "");
+      await p.setting.upsert({
+        where: { key: "assistant_site_url" },
+        update: { value: JSON.stringify(explicit) },
+        create: { key: "assistant_site_url", value: JSON.stringify(explicit) },
+      });
+    }
+    const result = await trainFromSite(requestOrigin(req), explicit || undefined);
+    return send({ ok: true, ...result, assistant: await assistantSettings() });
+  }
+
+  if (path === "/api/assistant/preview") {
+    const text = typeof d.text === "string" ? d.text.trim() : "";
+    if (!text) throw new Invalid("Scrivi un messaggio: l'assistente risponderà come farebbe con un cliente.");
+    const result = await generateReply({ channel: "chat di prova", text, contactName: "Cliente di prova" });
+    return send({ ok: true, ...result });
+  }
+
+  if (path === "/api/conversations/reply") {
+    const message = await sendManualReply(intId(d.id), typeof d.body === "string" ? d.body : "");
+    return send({ ok: true, message });
+  }
+
+  if (path === "/api/conversations/state") {
+    const patch: { auto_reply?: boolean; status?: string; read?: boolean } = {};
+    if (typeof d.auto_reply === "boolean") patch.auto_reply = d.auto_reply;
+    if (typeof d.status === "string") patch.status = d.status;
+    if (d.read === true) patch.read = true;
+    return send({ ok: true, conversation: await setConversationState(intId(d.id), patch) });
+  }
+
+  if (path === "/api/site") {
+    const saved: { bio?: Bio; content?: SiteContent } = {};
+    // Ogni parte si salva per intero: il record precedente viene eliminato prima
+    // di scrivere il nuovo, quindi un campo omesso non recupera il vecchio valore.
+    if ("content" in d) {
+      const content = validateSiteContent(d.content);
+      await replaceSetting("site_content", content);
+      saved.content = content;
+    }
+    if ("bio" in d) {
+      const bio = validateBio(d.bio);
+      await replaceSetting("site_bio", bio);
+      saved.bio = bio;
+    }
+    if (!saved.content && !saved.bio) throw new Invalid("Nessun contenuto da salvare.");
+    return send({ ok: true, ...saved });
   }
 
   if (path === "/api/ricevute") {

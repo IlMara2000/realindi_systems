@@ -8,10 +8,12 @@ Il repository contiene la versione deployata su Vercel (`realindi-systems.vercel
 
 | Percorso | Contenuto |
 |---|---|
-| `/` | Sito pubblico da freelancer (servizi, profilo, contatti) |
-| `/bio` | Link-in-bio con i link configurati in Impostazioni → Sito & Bio |
+| `/` | Sito pubblico da freelancer (servizi, profilo, contatti), modificabile dalla pagina |
+| `/bio` | Link-in-bio, modificabile dalla pagina |
 | `/book/<slug>` | Pagina di prenotazione pubblica (senza login) |
 | `/app` | Gestionale CRM (login con password del workspace) |
+
+Vetrina e link-in-bio si modificano direttamente dalle pagine: con la sessione del gestionale aperta il server inserisce un pulsante «Modifica» accanto a ogni sezione (senza sessione i bottoni non esistono nel markup). Il salvataggio sostituisce per intero il contenuto precedente — nessun campo viene ereditato — e il contenuto scritto nell'HTML resta la base solo finché non si salva la prima volta. Non ci sono più controlli del sito nelle Impostazioni del CRM.
 
 Oltre alle funzioni originarie, il gestionale include **Note** (CRUD, pin, aggancio a cliente/progetto, invio email) e **Calendario/Planner** (vista mensile, eventi, sincronizzazione bidirezionale con Google Calendar e Apple iCloud).
 
@@ -23,13 +25,63 @@ Variabili d’ambiente (opzionali; senza di esse le integrazioni restano disatti
 |---|---|
 | `DATABASE_URL` | Connessione PostgreSQL (Prisma) |
 | `DATABASE_URL_TEST` | Database usato dalla suite di test |
-| `INTEGRATIONS_KEY` | Chiave per cifrare (AES-256-GCM) le credenziali Google/Apple salvate: generane una lunga e casuale e non cambiarla mai dopo il primo collegamento |
+| `INTEGRATIONS_KEY` | Chiave per cifrare (AES-256-GCM) le credenziali Google/Apple, dei canali WhatsApp/Instagram/SMS e la chiave AI: generane una lunga e casuale e non cambiarla mai dopo il primo collegamento |
 | `GOOGLE_CLIENT_ID` | Client OAuth di Google Cloud |
 | `GOOGLE_CLIENT_SECRET` | Segreto OAuth di Google Cloud |
 
 **Google (Calendar + Gmail):** crea un progetto su console.cloud.google.com, attiva le API *Google Calendar* e *Gmail*, crea una credenziale OAuth client di tipo *Web application* con tra i redirect URI autorizzati `https://<dominio>/api/integrations/google/callback`, poi imposta le tre variabili. In Impostazioni → Integrazioni premi **Collega Google**; l’app è in Production, quindi i primi accessi vanno autorizzati utente per utente. Google serve per la sincronizzazione del calendario e per leggere l’inbox Gmail.
 
 **Apple (iCloud — SMTP/IMAP):** su account.apple.com → Accesso e sicurezza → crea una *password specifica per le app*; in Impostazioni → Integrazioni compila Apple ID, password specifica e mittente. Il server verifica il login IMAP prima di salvare (le credenziali restano cifrate e non vengono mai rilette dall’interfaccia). L’invio delle email usa solo Apple SMTP.
+
+### Canali di messaggistica e assistente AI
+
+La pagina **Canali & AI** collega WhatsApp Business, Instagram e SMS (Twilio) direttamente dall'app, senza modificare il codice né riavviare il server. Le credenziali sono cifrate con `INTEGRATIONS_KEY` (AES-256-GCM) e non vengono mai restituite al browser. Ogni installazione (o copia) dell'app ha database e chiave propri: i canali vanno configurati una volta per workspace, con i token di quell'attività.
+
+Cosa include:
+
+- **Collegamento guidato** per i tre provider, con verifica reale delle credenziali e invio di un messaggio di prova.
+- **Webhook già pronti**: ogni scheda mostra l'URL da incollare nel pannello del provider, con pulsante Copia. Per Meta il token di verifica è generato dal CRM e mostrato accanto al canale.
+- **Inbox unificata** in *Messaggi*: una conversazione per contatto e canale, cronologia completa, risposta manuale, presa in carico e auto-risposta attivabile per canale o per singola conversazione.
+- **Auto-apprendimento dal sito**: *Aggiorna conoscenza dal sito* legge la home, `/bio` e le pagine interne collegate, più una scheda attività costruita dalle Impostazioni (nome, contatti, prenotazione, note). I contenuti finiscono in `knowledge_docs` e sono l'unica fonte ammessa per le risposte.
+- **Regole di risposta**: nessun prezzo, tempo o promessa inventati; se un dato manca l'assistente chiede i recapiti o propone la call; tono, lingua, firma e limite di lunghezza configurabili; casi ambigui passati al titolare.
+
+#### Collegare WhatsApp Business
+
+1. In Meta for Developers crea un'app di tipo Business e aggiungi il prodotto *WhatsApp*.
+2. In WhatsApp → Configurazione API copia **Phone number ID** e genera un **token permanente** (utente di sistema con `whatsapp_business_messaging`).
+3. In Canali & AI incolla i due valori e, se vuoi la verifica della firma, l'**App secret** (Impostazioni app → Base).
+4. Copia l'URL del webhook mostrato dal CRM in WhatsApp → Configuration → Webhook, incolla il **token di verifica** del CRM e iscriviti al campo `messages`.
+5. Premi *Collega*, poi *Invia test* verso il tuo numero. Il cliente può scrivere solo dopo che il numero è attivo e verificato su Meta.
+
+#### Collegare Instagram
+
+Serve un account **professionale** collegato a una Pagina Facebook e un'app Meta con i permessi `instagram_basic`, `instagram_manage_messages` e `pages_manage_metadata`. In Canali & AI inserisci il token della Pagina e l'**ID numerico** dell'account Instagram, copia l'URL del webhook in *Instagram → Webhook* (oggetto `instagram`, campo `messages`) e usa lo stesso token di verifica. Meta richiede la revisione dell'app per rispondere a utenti esterni al team di test.
+
+#### Collegare gli SMS (Twilio)
+
+In Twilio → Numbers → Messaging incolla l'URL del webhook in *A message comes in* (POST), inserisci Account SID, Auth token e numero mittente in formato internazionale. Il CRM verifica la firma `X-Twilio-Signature` usando l'URL esatto con cui Twilio chiama il webhook: se usi un tunnel o un dominio personalizzato, quell'indirizzo deve essere quello configurato in Twilio. Ogni SMS inviato ha un costo sul tuo account.
+
+#### Provider AI
+
+L'assistente chiama un endpoint **OpenAI-compatibile** (`/chat/completions`), quindi va bene OpenAI, Z.ai o qualsiasi gateway compatibile. In *Canali & AI → Assistente* puoi incollare nome modello, base URL e chiave API: la chiave viene cifrata nel database. In alternativa imposta `AI_API_KEY`, `AI_BASE_URL` e `AI_MODEL` nelle variabili d'ambiente (utile su Vercel). La chiave non viene mai inviata al browser né scritta nei log.
+
+#### Come istruire l'assistente
+
+1. Completa **Impostazioni** (nome attività, email, sede, pagina di prenotazione): la scheda attività è la prima fonte di conoscenza.
+2. Tieni aggiornato il sito pubblico: servizi, cosa fai e cosa non fai, tempi tipici, zone, condizioni. L'assistente legge home, `/bio` e le pagine collegate.
+3. In **Istruzioni aggiuntive** scrivi le regole commerciali: come parlare dei prezzi, cosa proporre prima di un preventivo, orari, urgenze, frasi da evitare, quando passare la conversazione a te. Esempio: «Non indicare cifre. Proponi sempre una call di 30 minuti dal link di prenotazione. Se chiedono assistenza su un sito esistente, chiedi URL e piattaforma».
+4. Scegli tono, lingua e firma; imposta un'email per i casi da gestire a mano.
+5. Premi **Aggiorna conoscenza dal sito**, poi prova un messaggio reale nel riquadro *Prova l'assistente*: la risposta mostra anche le fonti usate.
+6. Dopo ogni modifica a sito, listino o servizi ripeti l'aggiornamento. Quando rispondi manualmente, la conversazione passa al titolare e l'auto-risposta si ferma: riattivala con *Riprendi assistente*.
+
+L'auto-risposta si attiva solo con tre condizioni: interruttore globale in *Assistente*, interruttore sul canale e interruttore sulla conversazione. In più il CRM ferma l'assistente dopo tre risposte ravvicinate nella stessa conversazione (10 minuti), per evitare loop con i bot. Senza chiave AI o senza conoscenza raccolta l'assistente non risponde: il messaggio resta in inbox e viene segnalato.
+
+#### Limiti da conoscere
+
+- WhatsApp e Instagram accettano messaggi liberi solo entro 24 ore dall'ultimo messaggio del cliente; fuori da quella finestra serve un template approvato.
+- Le funzioni Vercel hanno un tempo massimo per richiesta: la generazione ha un timeout di 12 secondi e la lettura del sito si ferma dopo 20 secondi. Se il piano gratuito interrompe la richiesta, il messaggio resta in inbox senza risposta e l'addestramento va ripetuto (su un piano con più tempo, o in locale, completa senza problemi).
+- La firma del webhook Twilio dipende dall'URL pubblico esatto; con un tunnel temporaneo l'indirizzo cambia a ogni avvio e va aggiornato in Twilio.
+- I messaggi e i canali vivono nel database dell'istanza: il backup ZIP legacy non li include.
 
 ### Verifiche (versione TypeScript)
 

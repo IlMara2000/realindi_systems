@@ -198,6 +198,73 @@ model SyncState {
   @@map("sync_state")
 }
 
+// ------------------------------------------------------------------ canali
+// Un canale è un collegamento a un provider di messaggistica (WhatsApp Cloud
+// API, Instagram Messaging, Twilio SMS). Le credenziali vivono cifrate in
+// `credentials` (AES-256-GCM con INTEGRATIONS_KEY) e non escono mai dal server.
+model Channel {
+  id          Int            @id @default(autoincrement())
+  provider    String
+  label       String         @default("")
+  external_id String
+  detail      String         @default("")
+  status      String         @default("connected")
+  last_error  String         @default("")
+  auto_reply  Boolean        @default(true)
+  credentials String
+  created_at  String         @default(dbgenerated("to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD HH24:MI:SS')"))
+  updated_at  String         @default(dbgenerated("to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD HH24:MI:SS')"))
+  conversations Conversation[]
+  @@index([provider, external_id])
+  @@map("channels")
+}
+
+// Una conversazione per contatto e canale; unisce i messaggi in ingresso e in
+// uscita (assistente o titolare).
+model Conversation {
+  id              Int       @id @default(autoincrement())
+  channel_id      Int
+  contact         String
+  contact_name    String    @default("")
+  status          String    @default("open")
+  unread          Int       @default(0)
+  auto_reply      Boolean   @default(true)
+  last_message_at String
+  created_at      String    @default(dbgenerated("to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD HH24:MI:SS')"))
+  channel         Channel   @relation(fields: [channel_id], references: [id])
+  messages        Message[]
+  @@unique([channel_id, contact])
+  @@map("conversations")
+}
+
+model Message {
+  id              Int          @id @default(autoincrement())
+  conversation_id Int
+  direction       String
+  author          String
+  body            String
+  external_id     String?
+  status          String       @default("sent")
+  error           String       @default("")
+  created_at      String       @default(dbgenerated("to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD HH24:MI:SS')"))
+  conversation    Conversation @relation(fields: [conversation_id], references: [id])
+  @@unique([conversation_id, external_id])
+  @@index([conversation_id, id])
+  @@map("messages")
+}
+
+// Conoscenza dell'assistente: pagine del sito pubblico raccolte dal CRM più
+// una scheda manuale costruita dalle impostazioni dell'attività.
+model KnowledgeDoc {
+  id         Int    @id @default(autoincrement())
+  url        String @unique
+  title      String @default("")
+  content    String
+  hash       String
+  updated_at String @default(dbgenerated("to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD HH24:MI:SS')"))
+  @@map("knowledge_docs")
+}
+
 // --------------------------------------------------------------- ricevute
 // Registro delle quietanze di cassa: il numero è progressivo per anno e unico,
 // assegnato dal server dentro una transazione (mai dal browser).

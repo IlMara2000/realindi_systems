@@ -38,7 +38,7 @@ export async function resetDb(): Promise<void> {
   await pg.connect();
   try {
     await pg.query(
-      "TRUNCATE TABLE settings, sessions, clients, projects, quotes, invoices, documents, appointments, blocks, login_attempts, notes, calendar_events, event_links, sync_state RESTART IDENTITY CASCADE",
+      "TRUNCATE TABLE settings, sessions, clients, projects, quotes, invoices, documents, appointments, blocks, login_attempts, notes, calendar_events, event_links, sync_state, channels, conversations, messages, knowledge_docs RESTART IDENTITY CASCADE",
     );
   } finally {
     await pg.end();

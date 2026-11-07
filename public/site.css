@@ -605,6 +605,9 @@ img {
   border-radius: var(--radius-pill);
   box-shadow: var(--raised-sm);
   padding: 1.05rem 1.25rem;
+  /* Un titolo senza spazi (un URL, un handle) allargherebbe la card oltre lo
+     schermo: con questo va a capo invece di sfondare la pagina. */
+  overflow-wrap: anywhere;
   transition: box-shadow 0.18s ease, transform 0.18s ease, color 0.18s ease;
 }
 
@@ -654,6 +657,12 @@ img {
   font-size: 0.76rem;
   color: var(--accent-ink);
   min-height: 1em;
+}
+
+/* Vuoto non deve contare nel flex: la sua spaziatura sposterebbe «Copia link»
+   di 8px a sinistra del centro. Ricompare appena c'è il messaggio. */
+#bio-feedback:empty {
+  display: none;
 }
 
 /* ------------------------------------------- modifica diretta (solo titolare) */
@@ -1096,4 +1105,211 @@ img {
   .footer {
     border-radius: 22px;
   }
+}
+
+/* La linguetta del menu resta fissa sul bordo destro, sopra le card. Su mobile
+   è sottile (16px invece di 30) e non si sposta più sotto il puntatore: così
+   non arriva mai al testo e le sezioni tengono lo stesso margine a sinistra e
+   a destra, senza riservare spazio in più a destra. */
+@media (max-width: 820px) {
+  .drawer-tab {
+    width: 16px;
+    height: 72px;
+    margin-top: -36px;
+    border-radius: 12px 0 0 12px;
+    /* filo di bordo + ombra: rendono visibile la linguetta senza aggiungere
+       larghezza, quindi i margini delle card restano quelli di prima */
+    box-shadow:
+      -1px 0 0 rgba(20, 20, 24, 0.1),
+      -6px 0 14px rgba(20, 20, 24, 0.18);
+  }
+
+  .drawer-tab:hover,
+  .drawer-tab:focus-visible {
+    transform: none;
+  }
+
+  /* Tre puntini al posto della freccia: il carattere resta nell'HTML ma non si
+     vede (font-size 0), i puntini sono disegnati e non dipendono dal font. */
+  .drawer-tab-chev {
+    display: block;
+    width: 3px;
+    height: 3px;
+    font-size: 0;
+    line-height: 0;
+    color: var(--ink);
+    background: currentColor;
+    border-radius: 50%;
+    box-shadow: 0 7px 0 currentColor, 0 -7px 0 currentColor;
+  }
+}
+
+/* ------------------------ modifica diretta della vetrina (solo titolare) */
+/* Come per la bio: nessun pannello nel CRM. Il bottone lo inserisce il server
+   soltanto quando la sessione del gestionale è aperta. */
+.section,
+.footer {
+  position: relative;
+}
+
+.site-edit {
+  position: absolute;
+  top: 0.9rem;
+  right: 0.9rem;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: var(--surface);
+  border: 0;
+  border-radius: 999px;
+  box-shadow: var(--raised-sm);
+  cursor: pointer;
+}
+
+.site-edit::before {
+  content: "✎";
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.site-edit:hover {
+  color: var(--accent-ink);
+}
+
+.site-edit:active {
+  box-shadow: var(--inset-sm);
+}
+
+.bio-actions .site-edit {
+  position: static;
+}
+
+/* Su schermi stretti il bottone esce dall'angolo e va in flusso: da absoluto
+   finirebbe sopra la prima riga di testo (piè di pagina in particolare). */
+@media (max-width: 720px) {
+  .site-edit {
+    position: static;
+    display: flex;
+    width: fit-content;
+    margin: 0 0 0.75rem auto;
+  }
+}
+
+.site-editor {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(20, 20, 24, 0.42);
+}
+
+.site-editor[hidden] {
+  display: none;
+}
+
+.site-editor-card {
+  width: min(620px, 100%);
+  max-height: 88vh;
+  overflow: auto;
+  padding: 1.2rem;
+  border-radius: 26px;
+  background: var(--surface);
+  box-shadow: var(--raised);
+}
+
+.site-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.site-editor-head h2 {
+  font-size: 1.05rem;
+  font-weight: 750;
+}
+
+.site-editor-fields {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.site-editor .bio-field > span {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.site-editor input[type="text"],
+.site-editor textarea {
+  width: 100%;
+  padding: 0.8rem 0.9rem;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--ink);
+  background: var(--surface);
+  border: 0;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--inset-sm);
+  resize: vertical;
+}
+
+.site-editor input:focus-visible,
+.site-editor textarea:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 2px;
+}
+
+.site-list {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.site-list-label {
+  margin: 0.4rem 0 0;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.site-list-rows {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.site-list-row {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.9rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--raised-sm);
+}
+
+.site-flash {
+  position: fixed;
+  bottom: 1.2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  padding: 0.7rem 1.1rem;
+  font-size: 0.85rem;
+  color: var(--ink);
+  background: var(--surface);
+  border-radius: 999px;
+  box-shadow: var(--raised);
 }

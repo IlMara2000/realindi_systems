@@ -114,6 +114,7 @@ button.primary,
   height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
 }
 .brand {
   font-size: 20px;
@@ -1928,5 +1929,339 @@ dialog::backdrop {
   :focus-visible {
     outline: 2px solid var(--ink);
     outline-offset: 3px;
+  }
+}
+
+/* ------------------------------------------------------- messaggi e canali */
+.inbox {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.conv-list {
+  background: var(--paper);
+  border-radius: var(--radius);
+  box-shadow: var(--raised-sm);
+  padding: 12px;
+  max-height: 70vh;
+  overflow: auto;
+}
+
+.conv-list-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 6px 8px 10px;
+}
+
+.conv {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+  color: var(--ink);
+  position: relative;
+}
+
+.conv:hover {
+  background: var(--bg);
+}
+
+.conv.is-active {
+  background: var(--bg);
+  box-shadow: var(--inset-sm);
+}
+
+.conv-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.conv-top strong {
+  font-size: 14px;
+}
+
+.conv-top time {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.conv-sub {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 26px;
+}
+
+.unread {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--lime);
+  color: #fff;
+  font-size: 11px;
+  display: grid;
+  place-items: center;
+  padding: 0 5px;
+}
+
+.thread {
+  background: var(--paper);
+  border-radius: var(--radius);
+  box-shadow: var(--raised-sm);
+  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.thread-empty {
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--muted);
+  display: grid;
+  gap: 8px;
+  place-content: center;
+  min-height: 420px;
+}
+
+.thread-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+.thread-head strong {
+  display: block;
+}
+
+.thread-head small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.thread-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.check-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.thread-body {
+  flex: 1;
+  overflow: auto;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 52vh;
+}
+
+.bubble-row {
+  display: flex;
+}
+
+.bubble-row.out {
+  justify-content: flex-end;
+}
+
+.bubble {
+  max-width: min(560px, 82%);
+  border-radius: 16px;
+  padding: 10px 14px;
+  box-shadow: var(--raised-sm);
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.bubble.out {
+  background: var(--ink);
+  color: var(--light);
+}
+
+.bubble.in {
+  background: var(--light);
+}
+
+.bubble.failed {
+  outline: 2px solid var(--red);
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.bubble small {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.65;
+  margin-bottom: 4px;
+}
+
+.bubble p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.composer {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--line);
+  align-items: flex-end;
+}
+
+.composer textarea {
+  flex: 1;
+  resize: vertical;
+  min-height: 44px;
+  max-height: 140px;
+  border-radius: 12px;
+  border: 0;
+  background: var(--bg);
+  box-shadow: var(--inset-sm);
+  padding: 10px 12px;
+  font: inherit;
+  color: var(--ink);
+}
+
+.provider-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
+  gap: 18px;
+}
+
+.provider-card {
+  display: grid;
+  gap: 12px;
+}
+
+.webhook-box {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  background: var(--bg);
+  border-radius: 12px;
+  box-shadow: var(--inset-sm);
+  padding: 8px 10px;
+  font-size: 11px;
+}
+
+.webhook-box span {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.webhook-box code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.test-row {
+  display: flex;
+  gap: 8px;
+}
+
+.test-row input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: var(--inset-sm);
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.doc-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.doc-list li {
+  background: var(--bg);
+  border-radius: 10px;
+  padding: 8px 10px;
+  display: grid;
+  gap: 2px;
+}
+
+.doc-list strong {
+  font-size: 13px;
+}
+
+.doc-list small {
+  color: var(--muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assistant-result {
+  margin-top: 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.assistant-result .bubble {
+  max-width: 100%;
+}
+
+@media (max-width: 900px) {
+  .inbox {
+    grid-template-columns: 1fr;
+  }
+
+  .conv-list {
+    max-height: 320px;
+  }
+
+  .thread-body {
+    max-height: none;
   }
 }

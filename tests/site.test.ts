@@ -4,7 +4,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { startServer, type RunningServer } from "../scripts/dev-server.js";
 // Side-effect: carica DATABASE_URL_TEST da .env come helpers.ts.
 import "./helpers.js";
-import { makeClient, resetDb } from "./helpers.js";
+import { makeClient, resetDb, sql } from "./helpers.js";
 
 let server: RunningServer;
 let base: string;
@@ -128,15 +128,189 @@ describe("routing sito", () => {
   });
 });
 
+// Impaginazione a schermo stretto. La suite non ha un browser, quindi non si
+// misurano i pixel: si verificano le due condizioni che tengono il testo al
+// sicuro dalla linguetta del menu. Erano proprio i margini asimmetrici e la
+// linguetta larga o scivolosa a produrre sovrapposizioni in passato.
+
+/** Corpo del blocco che si apre alla graffa `open`. */
+function sliceBlock(css: string, open: number): { body: string; end: number } {
+  let depth = 0;
+  for (let i = open; i < css.length; i += 1) {
+    if (css[i] === "{") depth += 1;
+    else if (css[i] === "}") {
+      depth -= 1;
+      if (depth === 0) return { body: css.slice(open + 1, i), end: i + 1 };
+    }
+  }
+  throw new Error("site.css non bilanciato: manca una graffa di chiusura");
+}
+
+/** Corpi delle @media con max-width fino a `maxWidth` px. */
+function mediaBodies(css: string, maxWidth: number): string[] {
+  const bodies: string[] = [];
+  const re = /@media[^{]*max-width:\s*(\d+)px[^{]*\{/g;
+  for (let m = re.exec(css); m; m = re.exec(css)) {
+    const { body, end } = sliceBlock(css, m.index + m[0].length - 1);
+    if (Number(m[1]) <= maxWidth) bodies.push(body);
+    re.lastIndex = end;
+  }
+  return bodies;
+}
+
+/** Regole di primo livello di un corpo: selettore + dichiarazioni. */
+function topLevelRules(body: string): { selector: string; decls: string }[] {
+  const rules: { selector: string; decls: string }[] = [];
+  let i = 0;
+  for (;;) {
+    const open = body.indexOf("{", i);
+    if (open === -1) return rules;
+    const { body: decls, end } = sliceBlock(body, open);
+    rules.push({ selector: body.slice(i, open).trim(), decls });
+    i = end;
+  }
+}
+
+/** Dichiarazioni come mappa proprietà -> valore. */
+function declarations(decls: string): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const part of decls.split(";")) {
+    const colon = part.indexOf(":");
+    if (colon === -1) continue;
+    map[part.slice(0, colon).trim()] = part.slice(colon + 1).trim();
+  }
+  return map;
+}
+
+/** Applica le dichiarazioni a una mappa, espandendo la scorciatoia `padding`. */
+function applyDeclarations(acc: Record<string, string>, decls: string): void {
+  for (const [property, value] of Object.entries(declarations(decls))) {
+    if (property !== "padding") {
+      acc[property] = value;
+      continue;
+    }
+    const [top, right = top, bottom = top, left = right] = value.split(/\s+/).filter(Boolean);
+    Object.assign(acc, {
+      "padding-top": top,
+      "padding-right": right,
+      "padding-bottom": bottom,
+      "padding-left": left,
+    });
+  }
+}
+
+/** Valore effettivo di una proprietà: conta l'ultima regola, come la cascata. */
+function effective(
+  rules: { selector: string; decls: string }[],
+  matches: (token: string) => boolean,
+  property: string,
+): string | undefined {
+  let found: string | undefined;
+  for (const { selector, decls } of rules) {
+    if (!selector.split(",").some((token) => matches(token.trim()))) continue;
+    const value = declarations(decls)[property];
+    if (value !== undefined) found = value;
+  }
+  return found;
+}
+
+describe("impaginazione a schermo stretto", () => {
+  it("su mobile le sezioni hanno margini simmetrici", async () => {
+    const css = (await get("/site.css")).text;
+    const rules = mediaBodies(css, 820).flatMap(topLevelRules);
+
+    // Margini effettivi dei contenitori che arrivano al bordo dello schermo.
+    const paddings = new Map<string, Record<string, string>>();
+    for (const { selector, decls } of rules) {
+      for (const token of selector.split(",").map((s) => s.trim())) {
+        if (token !== ".section" && token !== ".footer") continue;
+        const acc = paddings.get(token) ?? {};
+        applyDeclarations(acc, decls);
+        paddings.set(token, acc);
+      }
+    }
+
+    // Si controllano solo i contenitori il cui margine orizzontale viene
+    // davvero ridefinito qui sotto: un margine asimmetrico arriva sempre così.
+    const padded = [...paddings].filter(
+      ([, acc]) => acc["padding-left"] !== undefined || acc["padding-right"] !== undefined,
+    );
+    expect(padded.length, "mancano le regole mobile dei margini").toBeGreaterThan(0);
+    for (const [selector, acc] of padded) {
+      expect(
+        acc["padding-right"],
+        `${selector} sotto 820px deve avere lo stesso margine a sinistra e a destra`,
+      ).toBe(acc["padding-left"]);
+    }
+  });
+
+  it("la linguetta del menu resta stretta e non si sposta sotto il puntatore", async () => {
+    const css = (await get("/site.css")).text;
+    const rules = mediaBodies(css, 820).flatMap(topLevelRules);
+
+    const width = effective(rules, (token) => token === ".drawer-tab", "width");
+    expect(width, "la linguetta deve dichiarare una larghezza").toBeDefined();
+    // Sopra i 24px la linguetta entra nella fascia del testo e lo copre.
+    expect(Number.parseFloat(width as string)).toBeGreaterThan(0);
+    expect(Number.parseFloat(width as string)).toBeLessThanOrEqual(24);
+
+    // Uno spostamento in hover/focus la avvicinerebbe al testo.
+    const isHover = (token: string) =>
+      token === ".drawer-tab:hover" || token === ".drawer-tab:focus-visible";
+    const transform = effective(rules, isHover, "transform");
+    expect(transform, "manca la regola hover/focus della linguetta").toBeDefined();
+    expect(transform, "al passaggio del puntatore la linguetta non deve spostarsi").toBe("none");
+  });
+});
+
+describe("bottoni di modifica", () => {
+  it("non compaiono nel markup servito senza sessione", async () => {
+    for (const path of ["/", "/bio"]) {
+      const r = await get(path);
+      expect(r.status).toBe(200);
+      expect(r.text).not.toContain("data-edit=");
+      expect(r.text).not.toContain("edit-slot");
+    }
+  });
+
+  it("li inserisce il server quando la sessione è aperta", async () => {
+    await resetDb();
+    const c = makeClient(base);
+    await c.setup();
+
+    const home = await c.request("/");
+    const homeHtml = home.bytes.toString("utf8");
+    expect(homeHtml).toContain('data-edit="hero"');
+    expect(homeHtml).toContain('data-edit="services"');
+    expect(homeHtml).toContain('data-edit="contacts"');
+    expect(homeHtml).not.toContain("edit-slot");
+
+    const bio = await c.request("/bio");
+    const bioHtml = bio.bytes.toString("utf8");
+    expect(bioHtml).toContain('data-edit="bio"');
+  });
+
+  it("una sessione scaduta non vede i bottoni", async () => {
+    await resetDb();
+    const c = makeClient(base);
+    await c.setup();
+    await c.request("/api/logout", {});
+    const home = await c.request("/");
+    expect(home.bytes.toString("utf8")).not.toContain("data-edit=");
+  });
+});
+
 describe("GET /api/site", () => {
-  it("è pubblico, riporta il path di prenotazione e la bio vuota", async () => {
+  it("è pubblico e senza contenuti salvati non inventa una configurazione", async () => {
     await resetDb();
     const res = await fetch(base + "/api/site");
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.booking_path).toMatch(/^\/book\//);
-    expect(body.bio.links).toEqual([]);
-    expect(typeof body.bio.tagline).toBe("string");
+    // null = mai salvato: la pagina mostra il proprio contenuto iniziale, il
+    // server non tiene una copia di base da cui riemergere dopo una modifica.
+    expect(body.bio).toBeNull();
+    expect(body.content).toBeNull();
   });
 });
 
@@ -174,6 +348,134 @@ describe("POST /api/site", () => {
     expect(body.bio.links).toHaveLength(2);
     expect(body.bio.links[0].label).toBe("Sito");
     expect(body.bio.links[1].section).toBe("socials");
+  });
+
+  it("salva la vetrina completa e restituisce solo i dettagli inviati", async () => {
+    await resetDb();
+    const c = makeClient(base);
+    await c.setup();
+
+    const content = {
+      brand: "Studio Rossi",
+      ticker: "Automazioni ◆ Software ◆",
+      hero: {
+        label: "STUDIO ROSSI / SOFTWARE",
+        title1: "SOFTWARE CHE",
+        title2: "FA",
+        emphasis: "LA DIFFERENZA.",
+        lead: "Testo introduttivo nuovo.",
+        cta_primary: "Parliamone",
+        cta_secondary: "Guarda i lavori ↓",
+      },
+      services: {
+        label: "01 / SERVIZI",
+        title1: "COSA FACCIO",
+        title2: "",
+        items: [{ title: "Web app", body: "Applicazioni su misura." }],
+      },
+      about: {
+        label: "02 / CHI SONO",
+        title1: "IL METODO",
+        title2: "",
+        intro: "Una riga.",
+        paragraphs: ["Primo paragrafo.", "Secondo paragrafo."],
+        facts: ["Ascolto."],
+      },
+      works: {
+        label: "03 / LAVORI",
+        title1: "PROGETTI",
+        title2: "",
+        items: [{ kicker: "PROGETTO 01", title: "CRM", body: "Un gestionale." }],
+      },
+      contacts: {
+        label: "04 / CONTATTI",
+        title1: "SCRIVIMI",
+        title2: "",
+        paragraphs: ["Raccontami il progetto."],
+        secondary: "I miei contatti →",
+      },
+      footer: "© 2026 Studio Rossi",
+    };
+
+    const saved = await c.request("/api/site", { content });
+    expect(saved.status).toBe(200);
+    expect(saved.body.content.brand).toBe("Studio Rossi");
+
+    const res = await fetch(base + "/api/site");
+    const body = await res.json();
+    expect(body.content.brand).toBe("Studio Rossi");
+    expect(body.content.services.items).toHaveLength(1);
+    expect(body.content.about.paragraphs).toEqual(["Primo paragrafo.", "Secondo paragrafo."]);
+  });
+
+  it("un nuovo salvataggio cancella il precedente invece di integrarlo", async () => {
+    await resetDb();
+    const c = makeClient(base);
+    await c.setup();
+
+    const first = {
+      brand: "Prima versione",
+      ticker: "Ticker vecchio",
+      hero: { label: "A", title1: "B", title2: "C", emphasis: "D", lead: "E", cta_primary: "F", cta_secondary: "G" },
+      services: { label: "H", title1: "I", title2: "", items: [{ title: "Vecchio servizio", body: "Testo" }] },
+      about: { label: "J", title1: "K", title2: "", intro: "L", paragraphs: ["Vecchio paragrafo"], facts: ["Vecchio punto"] },
+      works: { label: "M", title1: "N", title2: "", items: [{ kicker: "O", title: "P", body: "Q" }] },
+      contacts: { label: "R", title1: "S", title2: "", paragraphs: ["Vecchio contatto"], secondary: "T" },
+      footer: "U",
+    };
+    expect((await c.request("/api/site", { content: first })).status).toBe(200);
+
+    // Secondo salvataggio: cambia il marchio e svuota elenchi e ticker. Nulla di
+    // quello che non viene inviato deve sopravvivere alla modifica.
+    const next = {
+      brand: "Solo questo",
+      ticker: "",
+      hero: { label: "", title1: "", title2: "", emphasis: "", lead: "", cta_primary: "", cta_secondary: "" },
+      services: { label: "", title1: "", title2: "", items: [] },
+      about: { label: "", title1: "", title2: "", intro: "", paragraphs: [], facts: [] },
+      works: { label: "", title1: "", title2: "", items: [] },
+      contacts: { label: "", title1: "", title2: "", paragraphs: [], secondary: "" },
+      footer: "",
+    };
+    expect((await c.request("/api/site", { content: next })).status).toBe(200);
+
+    const body = await (await fetch(base + "/api/site")).json();
+    expect(body.content.brand).toBe("Solo questo");
+    expect(body.content.ticker).toBe("");
+    expect(body.content.services.items).toEqual([]);
+    expect(body.content.about.paragraphs).toEqual([]);
+    expect(body.content.footer).toBe("");
+
+    const rows = await sql("SELECT COUNT(*)::int AS n FROM settings WHERE key = 'site_content'");
+    expect(rows[0].n).toBe(1);
+  });
+
+  it("senza sessione non salva la vetrina", async () => {
+    const res = await fetch(base + "/api/site", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: { brand: "Anonimo" } }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rifiuta una vetrina con campi del tipo sbagliato", async () => {
+    await resetDb();
+    const c = makeClient(base);
+    await c.setup();
+    const bad = await c.request("/api/site", {
+      content: {
+        brand: 42,
+        ticker: "x",
+        hero: {},
+        services: { items: [] },
+        about: {},
+        works: { items: [] },
+        contacts: {},
+        footer: "",
+      },
+    });
+    expect(bad.status).toBe(400);
   });
 
   it("rifiuta URL non http(s) e sezioni sconosciute", async () => {

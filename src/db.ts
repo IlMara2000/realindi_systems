@@ -27,6 +27,11 @@ export const DEFAULTS: Record<string, unknown> = {
   booking_duration: 30, booking_start: 9, booking_end: 18,
   booking_days: [0, 1, 2, 3, 4], booking_enabled: true,
   booking_notice: 24, booking_horizon: 30, public_url: "",
+  assistant_enabled: false, assistant_name: "", assistant_tone: "professionale",
+  assistant_language: "auto", assistant_signature: "", assistant_notes: "",
+  assistant_site_url: "", assistant_model: "gpt-4o-mini",
+  assistant_base_url: "https://api.openai.com/v1", assistant_max_chars: 700,
+  assistant_handoff_email: "",
   ...fiscal.PROFILE_DEFAULTS,
 };
 

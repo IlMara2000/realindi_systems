@@ -29,6 +29,19 @@ const timeLabel = (v) =>
     hour: "2-digit",
     minute: "2-digit",
   });
+const chatTime = (v) => {
+  if (!v) return "—";
+  const iso = /Z|[+-]\d{2}:\d{2}$/.test(v) ? v : v.replace(" ", "T") + "Z";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("it-IT", {
+    timeZone: "Europe/Rome",
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
 const today = () =>
   new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Rome" });
 const futureDay = (n) => {
@@ -46,6 +59,8 @@ const labels = {
   calendar: "Appuntamenti",
   planner: "Calendario",
   notes: "Note",
+  messages: "Messaggi",
+  channels: "Canali & AI",
   settings: "Impostazioni",
   discovery: "In definizione",
   active: "In corso",
@@ -73,6 +88,9 @@ const paths = {
   calendar: "M4 5h16v16H4z M16 3v4 M8 3v4 M4 11h16 M8 15h2 M14 15h2",
   planner: "M4 5h16v16H4z M16 3v4 M8 3v4 M4 11h16 M8 15h2 M14 15h2",
   notes: "M6 3h12a1 1 0 0 1 1 1v16l-3.5-2.5L12 20l-3.5-2.5L5 20V4a1 1 0 0 1 1-1z M9 8h6 M9 12h6",
+  messages:
+    "M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7A8.5 8.5 0 0 1 4 11.5 8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5z",
+  channels: "M9 2v6 M15 2v6 M6 8h12v4a6 6 0 0 1-12 0z M12 18v4",
   settings:
     "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8 M12 2v3 M12 19v3 M2 12h3 M19 12h3 M5 5l2 2 M17 17l2 2 M5 19l2-2 M17 7l2-2",
 };
@@ -89,7 +107,9 @@ let state,
   eventsCache = [],
   eventsFrom = "",
   eventsTo = "",
-  pendingToast = "";
+  pendingToast = "",
+  activeConversation = null,
+  threadCache = null;
 async function api(url, data) {
   const res = await fetch(url, {
     credentials: "same-origin",
@@ -135,8 +155,9 @@ function table(headers, rows) {
 function panel(title, body, link = "") {
   return `<section class="panel"><div class="panel-head"><h2>${title}</h2>${link}</div>${body}</section>`;
 }
-function field(label, name, type = "text", value = "", extra = "") {
-  return `<div class="field"><label for="f-${name}">${label}</label><input id="f-${name}" name="${name}" type="${type}" value="${esc(value)}" ${extra}></div>`;
+function field(label, name, type = "text", value = "", extra = "", idPrefix = "") {
+  const id = idPrefix ? `${idPrefix}-${name}` : name;
+  return `<div class="field"><label for="f-${id}">${label}</label><input id="f-${id}" name="${name}" type="${type}" value="${esc(value)}" ${extra}></div>`;
 }
 function area(label, name, value = "") {
   return `<div class="field full"><label for="f-${name}">${label}</label><textarea id="f-${name}" name="${name}">${esc(value)}</textarea></div>`;
@@ -229,7 +250,7 @@ function render() {
   route = location.hash.slice(1) || "dashboard";
   if (!labels[route]) route = "dashboard";
   $("#root").innerHTML =
-    `<div class="shell"><div class="drawer-scrim" data-action="menu-close" aria-hidden="true"></div><button type="button" class="drawer-tab" data-action="menu-open" aria-controls="crm-menu" aria-expanded="false" aria-label="Apri il menu"><span aria-hidden="true">‹</span></button><aside class="sidebar" id="crm-menu"><button type="button" class="drawer-close" data-action="menu-close" aria-label="Chiudi il menu">×</button><a class="brand" href="#dashboard"><img class="brand-mark" src="/assets/logo-realindi.png" alt="" width="32" height="32"> REALINDI</a><div class="brand-sub">FREELANCER WORKSPACE</div><div class="nav-label">WORKSPACE</div><nav class="nav" aria-label="Menu principale">${["dashboard", "clients", "projects", "quotes", "invoices", "ricevute", "documents", "calendar", "planner", "notes", "settings"].map((k) => k === "ricevute" ? `<a href="/ricevute">${icon("invoices")}Ricevute</a>` : `<a href="#${k}" class="${route === k ? "active" : ""}" ${route === k ? 'aria-current="page"' : ""}>${icon(k)}${labels[k]}</a>`).join("")}</nav><div class="sidebar-bottom"><div class="nav-label">IL TUO BUSINESS, IN ORDINE.</div><div class="account"><span class="avatar">${esc((state.settings.owner_name || "RS").slice(0, 2).toUpperCase())}</span><div>${esc(state.settings.owner_name || "Il tuo workspace")}<small>Consulente indipendente</small></div></div></div></aside><main class="main"><header class="topbar"><div class="topbar-head"><a class="back-site" href="/">Torna al sito</a><div class="crumb">Workspace <span>/ &nbsp; ${labels[route]}</span></div></div><div class="top-right"><span class="local-status"><i class="status-dot"></i>Archivio locale</span>${btn("Esci", "logout", "", "secondary small")}<button type="button" class="nav-toggle" data-action="menu-toggle" aria-controls="crm-menu" aria-expanded="false" aria-label="Apri il menu"><span class="nav-toggle-bars" aria-hidden="true"></span></button></div></header><div class="content" id="content"></div></main></div>`;
+    `<div class="shell"><div class="drawer-scrim" data-action="menu-close" aria-hidden="true"></div><button type="button" class="drawer-tab" data-action="menu-open" aria-controls="crm-menu" aria-expanded="false" aria-label="Apri il menu"><span aria-hidden="true">‹</span></button><aside class="sidebar" id="crm-menu"><button type="button" class="drawer-close" data-action="menu-close" aria-label="Chiudi il menu">×</button><a class="brand" href="#dashboard"><img class="brand-mark" src="/assets/logo-realindi.png" alt="" width="32" height="32"> REALINDI</a><div class="brand-sub">FREELANCER WORKSPACE</div><div class="nav-label">WORKSPACE</div><nav class="nav" aria-label="Menu principale">${["dashboard", "messages", "clients", "projects", "quotes", "invoices", "ricevute", "documents", "calendar", "planner", "notes", "channels", "settings"].map((k) => k === "ricevute" ? `<a href="/ricevute">${icon("invoices")}Ricevute</a>` : `<a href="#${k}" class="${route === k ? "active" : ""}" ${route === k ? 'aria-current="page"' : ""}>${icon(k)}${labels[k]}</a>`).join("")}</nav><div class="sidebar-bottom"><div class="nav-label">IL TUO BUSINESS, IN ORDINE.</div><div class="account"><span class="avatar">${esc((state.settings.owner_name || "RS").slice(0, 2).toUpperCase())}</span><div>${esc(state.settings.owner_name || "Il tuo workspace")}<small>Consulente indipendente</small></div></div></div></aside><main class="main"><header class="topbar"><div class="topbar-head"><a class="back-site" href="/">Torna al sito</a><div class="crumb">Workspace <span>/ &nbsp; ${labels[route]}</span></div></div><div class="top-right"><span class="local-status"><i class="status-dot"></i>Archivio locale</span>${btn("Esci", "logout", "", "secondary small")}<button type="button" class="nav-toggle" data-action="menu-toggle" aria-controls="crm-menu" aria-expanded="false" aria-label="Apri il menu"><span class="nav-toggle-bars" aria-hidden="true"></span></button></div></header><div class="content" id="content"></div></main></div>`;
   renderContent();
   if (pendingToast) {
     const t = pendingToast;
@@ -248,6 +269,8 @@ function renderContent() {
     calendar,
     planner,
     notes,
+    messages: messagesView,
+    channels: channelsView,
     settingsView,
   };
   $("#content").innerHTML = (
@@ -258,6 +281,7 @@ function renderContent() {
   }
   bindView();
   if (route === "planner") loadPlannerEvents();
+  if (route === "messages" && activeConversation && !threadCache) loadThread(activeConversation);
 }
 function dashboard() {
   const paid = state.invoices.filter((x) => x.status === "paid");
@@ -870,10 +894,140 @@ function settingsView() {
     `<form id="settings-form"><div class="settings-grid">${panel("Attività e fatturazione", `<div class="panel-body form-grid">${field("Nome attività", "business_name", "text", s.business_name, "required")}${field("Il tuo nome", "owner_name", "text", s.owner_name)}${field("Email attività", "email", "email", s.email)}${field("Partita IVA", "vat_number", "text", s.vat_number)}${field("Codice fiscale", "tax_code", "text", s.tax_code)}${field("IBAN", "iban", "text", s.iban)}${area("Indirizzo completo", "address", s.address)}${field("Dicitura aggiuntiva", "tax_label", "text", s.tax_label)}${field("IVA indicativa preventivi (%)", "vat_rate", "number", s.vat_rate, 'min="0" max="100" step="0.01" required')}${field("Tariffa oraria (€)", "hourly_rate", "number", s.hourly_rate, 'min="0" step="0.01" required')}<p class="hint">Partita IVA senza prefisso paese. Completa il profilo fiscale aziendale qui sotto: ogni fattura richiederà una verifica dedicata.</p></div>`)}${panel("Pagina di prenotazione", `<div class="panel-body form-grid">${field("Titolo dell’incontro", "booking_title", "text", s.booking_title, "required")}${field("Durata (minuti)", "booking_duration", "number", s.booking_duration, 'min="15" max="180" required')}${area("Presentazione", "booking_description", s.booking_description)}${field("Disponibile dalle (ora)", "booking_start", "number", s.booking_start, 'min="0" max="23" required')}${field("Alle (ora)", "booking_end", "number", s.booking_end, 'min="1" max="23" required')}${field("Preavviso minimo (ore)", "booking_notice", "number", s.booking_notice, 'min="0" max="720" required')}${field("Prenotabile entro (giorni)", "booking_horizon", "number", s.booking_horizon, 'min="1" max="180" required')}${field("Indirizzo pubblico (HTTPS)", "public_url", "url", s.public_url, 'placeholder="https://prenotazioni.esempio.it"')}<p class="hint">Indirizzo su cui i clienti aprono le prenotazioni, solo dominio senza percorso. Vuoto: il link usa l'indirizzo da cui stai navigando. «Pubblica prenotazioni.command» lo imposta automaticamente quando avvia il tunnel.</p><div class="field full"><label>Giorni disponibili · Europe/Rome</label><div class="check-row">${["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"].map((t, i) => `<label><input type="checkbox" name="day" value="${i}" ${s.booking_days.includes(i) ? "checked" : ""}>${t}</label>`).join("")}</div></div><div class="field full check-row"><label><input type="checkbox" name="booking_enabled" ${s.booking_enabled ? "checked" : ""}>Accetta nuove prenotazioni</label></div></div>`)}</div>${fiscalSettings(s)}<div class="error" role="alert"></div><div class="form-actions"><button class="primary" type="submit">Salva impostazioni</button></div></form><div class="section-gap">${panel("I tuoi dati restano tuoi", `<div class="panel-body"><p class="subtitle">Esporta database e documenti in un archivio ZIP. Il backup contiene dati personali: conservalo in un luogo protetto.</p><div class="section-gap"><a class="button" href="/api/backup">Scarica backup completo ↓</a></div><p class="hint">Il ripristino è disponibile con lo strumento manage.py incluso nel progetto.</p></div>`)}</div><div class="section-gap">${panel(
       "Integrazioni",
       `<div class="panel-body">${integChips}${googleBlock}${appleBlock}</div>`,
-    )}</div><div class="section-gap">${panel(
-      "Sito",
-      `<div class="panel-body form-grid">${field("Link di prenotazione", "booking_path", "text", bookingUrl(), "readonly")}<p class="hint">Il link in bio si modifica direttamente dalla pagina <a href="/bio">/bio</a>, con il pulsante «Modifica» che compare quando la sessione è aperta.</p></div>`,
     )}</div>`
+  );
+}
+/* ------------------------------------------------------- messaggi e canali */
+function conversationName(c) {
+  return c.contact_name || c.contact || "Contatto";
+}
+function messagesView() {
+  const channels = state.channels || [];
+  const conversations = state.conversations || [];
+  const actions = btn("Aggiorna", "refresh-inbox") + btn("Canali & AI", "open-channels");
+  if (!channels.length) {
+    return (
+      title("Messaggi", "WhatsApp, Instagram e SMS in un'unica inbox.", actions) +
+      empty(
+        "messages",
+        "Nessun canale collegato",
+        "Collega WhatsApp, Instagram o un numero SMS: i messaggi arriveranno qui e l'assistente potrà rispondere da solo.",
+        btn("Configura i canali", "open-channels", "", "primary"),
+      )
+    );
+  }
+  const list = conversations.length
+    ? conversations
+        .map(
+          (c) =>
+            `<button type="button" class="conv ${activeConversation === c.id ? "is-active" : ""}" data-action="open-conv" data-id="${c.id}"><span class="conv-top"><strong>${esc(conversationName(c))}</strong><time>${chatTime(c.last_message_at)}</time></span><span class="conv-sub">${esc(c.channel.provider_name)} · ${esc(c.preview || "Nessun messaggio")}</span>${c.unread ? `<b class="unread">${c.unread}</b>` : ""}</button>`,
+        )
+        .join("")
+    : '<p class="hint">Nessuna conversazione: comparirà qui appena un cliente scrive.</p>';
+  return (
+    title("Messaggi", "WhatsApp, Instagram e SMS in un'unica inbox.", actions) +
+    `<div class="inbox"><section class="conv-list"><div class="conv-list-head"><span>Conversazioni</span><a href="#channels">Canali →</a></div>${list}</section><section class="thread">${threadView()}</section></div>`
+  );
+}
+function threadView() {
+  if (!activeConversation)
+    return `<div class="thread-empty"><strong>Scegli una conversazione</strong><p>Qui trovi la cronologia completa e puoi prendere in carico la risposta.</p></div>`;
+  if (!threadCache) return `<div class="thread-empty">Caricamento della conversazione…</div>`;
+  const { conversation, channel, messages } = threadCache;
+  const rows = (messages || [])
+    .map((m) => {
+      const out = m.direction === "out";
+      const author =
+        m.author === "assistant"
+          ? "Assistente"
+          : m.author === "human"
+            ? "Tu"
+            : m.author === "system"
+              ? "Sistema"
+              : conversation.contact_name || "Cliente";
+      return `<div class="bubble-row ${out ? "out" : "in"}"><div class="bubble ${out ? "out" : "in"} ${m.status === "failed" ? "failed" : ""}"><small>${esc(author)} · ${chatTime(m.created_at)}</small><p>${esc(m.body)}</p></div></div>`;
+    })
+    .join("");
+  return `<div class="thread-head"><div><strong>${esc(conversationName(conversation))}</strong><small>${esc(channel.provider_name)} · ${esc(conversation.contact)}</small></div><div class="thread-actions"><label class="check-inline"><input type="checkbox" id="conv-auto" ${conversation.auto_reply ? "checked" : ""}> Auto-risposta</label>${conversation.status === "human" ? btn("Riprendi assistente", "conv-resume", conversation.id, "secondary small") : ""}</div></div><div class="thread-body">${rows || '<p class="hint">Nessun messaggio.</p>'}</div><form id="reply-form" class="composer"><textarea id="reply-text" rows="2" maxlength="4000" placeholder="Scrivi come titolare…" aria-label="Risposta"></textarea><button class="primary" type="submit">Invia</button></form>`;
+}
+async function loadThread(id) {
+  try {
+    threadCache = await api(`/api/conversations/${id}`);
+    if (route === "messages") renderContent();
+  } catch (e) {
+    report(e);
+  }
+}
+function channelChip(c) {
+  if (!c) return '<span class="provider-chip off">Non collegato</span>';
+  return `<span class="provider-chip ${c.status === "connected" ? "on" : "warn"}">${c.status === "connected" ? "Collegato" : "Da verificare"}</span>`;
+}
+function providerFields(provider, c, prefix) {
+  const keep = (label) => `placeholder="${label}" autocomplete="off"`;
+  if (provider === "whatsapp") {
+    return (
+      field("Access token", "access_token", "password", "", c ? keep("Già salvato — lascia vuoto per non cambiarlo") : 'required autocomplete="off"', prefix) +
+      field("Phone number ID", "phone_number_id", "text", c?.external_id || "", c ? "" : "required", prefix) +
+      field("App secret · firma webhook", "app_secret", "password", "", keep(c?.has_app_secret ? "Già salvato" : "consigliato"), prefix) +
+      field("WABA ID (facoltativo)", "waba_id", "text", "", "", prefix) +
+      field("Token di verifica webhook", "verify_token", "text", c?.verify_token || "", c ? "readonly" : 'placeholder="Generato automaticamente"', prefix)
+    );
+  }
+  if (provider === "instagram") {
+    return (
+      field("Access token della Pagina", "access_token", "password", "", c ? keep("Già salvato — lascia vuoto per non cambiarlo") : 'required autocomplete="off"', prefix) +
+      field("ID account Instagram", "ig_user_id", "text", c?.external_id || "", c ? "" : "required", prefix) +
+      field("App secret · firma webhook", "app_secret", "password", "", keep(c?.has_app_secret ? "Già salvato" : "consigliato"), prefix) +
+      field("Token di verifica webhook", "verify_token", "text", c?.verify_token || "", c ? "readonly" : 'placeholder="Generato automaticamente"', prefix)
+    );
+  }
+  return (
+    field("Account SID", "account_sid", "text", c ? "" : "", c ? keep("AC… già salvato") : 'required placeholder="AC…"', prefix) +
+    field("Auth token", "auth_token", "password", "", c ? keep("Già salvato — lascia vuoto per non cambiarlo") : 'required autocomplete="off"', prefix) +
+    field("Numero mittente", "from", "tel", c?.external_id || "", 'required placeholder="+393331234567"', prefix)
+  );
+}
+function channelCard(p) {
+  const c = (state.channels || []).find((x) => x.provider === p.id);
+  const webhook = `${location.origin}${p.webhook}`;
+  return panel(
+    p.name,
+    `<div class="panel-body provider-card"><div class="sync-row">${channelChip(c)}${c && c.detail ? `<span class="hint">${esc(c.detail)}</span>` : ""}</div>${c?.last_error ? `<div class="error">${esc(c.last_error)}</div>` : ""}<form id="channel-form-${p.id}" data-channel="${p.id}" class="form-grid">${c ? `<input type="hidden" name="id" value="${c.id}">` : ""}${field("Etichetta", "label", "text", c?.label || p.name, "", p.id)}${providerFields(p.id, c, p.id)}<div class="field full check-row"><label><input type="checkbox" name="auto_reply" ${!c || c.auto_reply ? "checked" : ""}>Risposta automatica su questo canale</label></div><div class="error" role="alert"></div><div class="form-actions"><button class="primary" type="submit">${c ? "Aggiorna e verifica" : "Collega"}</button>${c ? btn("Verifica", "channel-verify", c.id) : ""}${c ? btn("Disconnetti", "channel-delete", c.id, "secondary small danger") : ""}</div></form><div class="webhook-box"><span>Webhook URL</span><code>${esc(webhook)}</code><button type="button" class="secondary small" data-action="copy-webhook" data-provider="${p.id}">Copia</button></div>${c ? `<div class="test-row"><input id="test-to-${p.id}" aria-label="Destinatario di prova" placeholder="${p.id === "instagram" ? "IGSID del destinatario" : "+39…"}"><button type="button" class="secondary small" data-action="channel-test" data-id="${c.id}" data-provider="${p.id}">Invia test</button></div>` : ""}<p class="hint">${p.hint}</p></div>`,
+  );
+}
+function channelsView() {
+  const a = state.assistant || {};
+  const k = state.knowledge || { docs: [], chars: 0, trained_at: "" };
+  const providers = [
+    {
+      id: "whatsapp",
+      name: "WhatsApp Business",
+      webhook: "/api/webhooks/whatsapp",
+      hint: "Meta → WhatsApp → Configurazione API: copia Phone number ID e un token permanente. In Configuration → Webhook incolla l'URL qui sopra e lo stesso token di verifica, poi iscriviti al campo messages.",
+    },
+    {
+      id: "instagram",
+      name: "Instagram",
+      webhook: "/api/webhooks/instagram",
+      hint: "Serve un account professionale collegato a una Pagina Facebook e un'app Meta con instagram_basic e instagram_manage_messages. Webhook sull'oggetto instagram, campo messages.",
+    },
+    {
+      id: "sms",
+      name: "SMS · Twilio",
+      webhook: "/api/webhooks/sms",
+      hint: "Twilio → Numbers → Messaging: incolla l'URL in «A message comes in» (metodo POST). Il mittente deve essere un numero acquistato o verificato; ogni SMS ha un costo.",
+    },
+  ];
+  const assistantForm = `<form id="assistant-form"><div class="panel-body form-grid">${field("Nome dell'assistente", "assistant_name", "text", a.name || "")}${select("Tono", "assistant_tone", [["professionale", "Professionale"], ["amichevole", "Amichevole"], ["diretto", "Diretto"], ["formale", "Formale"]], a.tone || "professionale")}${select("Lingua", "assistant_language", [["auto", "Lingua del cliente"], ["it", "Italiano"], ["en", "Inglese"]], a.language || "auto")}${field("Lunghezza massima risposta", "assistant_max_chars", "number", a.max_chars || 700, 'min="200" max="2000" step="1"')}${field("Firma (facoltativa)", "assistant_signature", "text", a.signature || "")}${field("Email per i casi da gestire a mano", "assistant_handoff_email", "email", a.handoff_email || "")}${field("Sito da cui apprendere", "assistant_site_url", "url", a.site_url || "", `placeholder="${location.origin}"`)}${field("Modello", "assistant_model", "text", a.model || "gpt-4o-mini")}${field("Base URL OpenAI-compatibile", "assistant_base_url", "url", a.base_url || "https://api.openai.com/v1")}${field("Chiave API (salvata cifrata)", "api_key", "password", "", `placeholder="${a.key_configured ? "Già salvata — incolla una nuova per cambiarla" : "sk-…"}" autocomplete="off"`)}${area("Istruzioni aggiuntive", "assistant_notes", a.notes || "")}<div class="field full check-row"><label><input type="checkbox" name="assistant_enabled" ${a.enabled ? "checked" : ""}>Risposta automatica attiva sui canali</label><label><input type="checkbox" name="remove_key">Rimuovi la chiave salvata</label></div><div class="error" role="alert"></div><div class="form-actions"><button class="primary" type="submit">Salva assistente</button></div></div></form>`;
+  const knowledgePanel = `<div class="panel-body"><p class="subtitle">L'assistente usa solo ciò che trova qui: le pagine del sito e la scheda attività costruita dalle impostazioni. Aggiorna dopo ogni modifica a servizi, prezzi o orari.</p><div class="sync-row"><span class="provider-chip ${k.trained_at ? "on" : "off"}">${k.trained_at ? "Aggiornato il " + esc(k.trained_at.slice(0, 10)) : "Mai aggiornato"}</span><span class="hint">${(k.docs || []).length} fonti · ${k.chars || 0} caratteri</span></div><div class="actions section-gap">${btn("Aggiorna conoscenza dal sito", "train-assistant", "", "primary")}${btn("Apri il sito", "open-site")}</div><div id="train-result" class="hint"></div><ul class="doc-list">${(k.docs || []).map((d) => `<li><strong>${esc(d.title)}</strong><small>${esc(d.url)} · ${d.chars} caratteri</small></li>`).join("") || "<li><small>Nessuna fonte raccolta: premi il pulsante per leggere il sito.</small></li>"}</ul></div>`;
+  const playground = `<div class="panel-body"><p class="subtitle">Simula un messaggio di un cliente: usa la conoscenza raccolta e non invia nulla.</p><form id="assistant-test-form"><div class="field full"><label for="assistant-test-text">Messaggio del cliente</label><textarea id="assistant-test-text" name="text" rows="3" required placeholder="Ciao, fate anche manutenzione di siti esistenti?"></textarea></div><div class="error" role="alert"></div><div class="form-actions"><button class="primary" type="submit">Genera risposta</button></div></form><div id="assistant-test-result" class="assistant-result" aria-live="polite"></div></div>`;
+  return (
+    title("Canali & AI", "Collega WhatsApp, Instagram e SMS e addestra l'assistente sulla tua attività.", btn("Apri inbox", "open-inbox")) +
+    `<div class="callout"><strong>Come funziona</strong><br>Collega un canale, incolla l'URL del webhook nel pannello del provider e premi «Aggiorna conoscenza dal sito». Da quel momento l'assistente risponde con le informazioni della tua attività e tu vedi tutto in Messaggi.</div>` +
+    panel("Assistente AI", assistantForm) +
+    `<div class="section-gap">${panel("Auto-apprendimento dal sito", knowledgePanel)}</div>` +
+    `<div class="section-gap provider-grid">${providers.map(channelCard).join("")}</div>` +
+    `<div class="section-gap">${panel("Prova l'assistente", playground)}</div>`
   );
 }
 function bindView() {
@@ -930,6 +1084,106 @@ function bindView() {
         $(".error", f).textContent = err.message;
       } finally {
         b.disabled = false;
+      }
+    };
+  $$("form[data-channel]").forEach((form) => {
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const f = e.target;
+      const d = Object.fromEntries(new FormData(f));
+      d.provider = f.dataset.channel;
+      d.auto_reply = Boolean(f.auto_reply?.checked);
+      if (d.id) d.id = Number(d.id);
+      const submit = $("[type=submit]", f);
+      submit.disabled = true;
+      $(".error", f).textContent = "";
+      try {
+        const res = await api("/api/channels", d);
+        await refresh();
+        const v = res.verification;
+        toast(
+          v
+            ? v.ok
+              ? "Canale collegato e verificato."
+              : "Canale salvato, ma la verifica non è riuscita: " + v.error
+            : "Canale salvato.",
+        );
+      } catch (err) {
+        $(".error", f).textContent = err.message;
+      } finally {
+        submit.disabled = false;
+      }
+    };
+  });
+  if ($("#assistant-form"))
+    $("#assistant-form").onsubmit = async (e) => {
+      e.preventDefault();
+      const f = e.target;
+      const d = Object.fromEntries(new FormData(f));
+      d.assistant_enabled = Boolean(f.assistant_enabled?.checked);
+      d.remove_key = Boolean(f.remove_key?.checked);
+      const submit = $("[type=submit]", f);
+      submit.disabled = true;
+      $(".error", f).textContent = "";
+      try {
+        await api("/api/assistant", d);
+        await refresh();
+        toast("Assistente aggiornato.");
+      } catch (err) {
+        $(".error", f).textContent = err.message;
+      } finally {
+        submit.disabled = false;
+      }
+    };
+  if ($("#assistant-test-form"))
+    $("#assistant-test-form").onsubmit = async (e) => {
+      e.preventDefault();
+      const f = e.target;
+      const text = $("#assistant-test-text").value.trim();
+      const box = $("#assistant-test-result");
+      if (!text) return;
+      const submit = $("[type=submit]", f);
+      submit.disabled = true;
+      $(".error", f).textContent = "";
+      box.innerHTML = '<p class="hint">L’assistente sta scrivendo…</p>';
+      try {
+        const res = await api("/api/assistant/preview", { text });
+        box.innerHTML = `<div class="bubble out"><small>${esc(res.model)}</small><p>${esc(res.reply)}</p></div><p class="hint">Fonti: ${(res.sources || []).map((s) => esc(s.title)).join(" · ") || "scheda attività"}</p>`;
+      } catch (err) {
+        box.innerHTML = `<p class="error">${esc(err.message)}</p>`;
+      } finally {
+        submit.disabled = false;
+      }
+    };
+  if ($("#reply-form"))
+    $("#reply-form").onsubmit = async (e) => {
+      e.preventDefault();
+      const text = $("#reply-text").value.trim();
+      if (!text) return;
+      const submit = $("[type=submit]", e.target);
+      submit.disabled = true;
+      try {
+        await api("/api/conversations/reply", { id: activeConversation, body: text });
+        threadCache = null;
+        await refresh();
+        toast("Messaggio inviato.");
+      } catch (err) {
+        report(err);
+      } finally {
+        submit.disabled = false;
+      }
+    };
+  if ($("#conv-auto"))
+    $("#conv-auto").onchange = async (e) => {
+      const wanted = e.target.checked;
+      try {
+        await api("/api/conversations/state", { id: activeConversation, auto_reply: wanted });
+        threadCache = null;
+        await refresh();
+        toast(wanted ? "Auto-risposta attiva." : "Auto-risposta sospesa.");
+      } catch (err) {
+        e.target.checked = !wanted;
+        report(err);
       }
     };
 }
@@ -1194,6 +1448,100 @@ document.addEventListener("click", async (e) => {
       await api("/api/logout", {});
       state = null;
       return auth(false);
+    }
+    if (a === "open-channels") {
+      location.hash = "channels";
+      return;
+    }
+    if (a === "open-inbox") {
+      location.hash = "messages";
+      return;
+    }
+    if (a === "open-site") {
+      window.open("/", "_blank", "noopener");
+      return;
+    }
+    if (a === "open-conv") {
+      activeConversation = Number(id);
+      threadCache = null;
+      renderContent();
+      return loadThread(activeConversation);
+    }
+    if (a === "refresh-inbox") {
+      threadCache = null;
+      await refresh();
+      return toast("Inbox aggiornata.");
+    }
+    if (a === "train-assistant") {
+      b.disabled = true;
+      const site = ($("#f-assistant_site_url")?.value || "").trim();
+      const box = $("#train-result");
+      if (box) box.textContent = "Lettura del sito in corso…";
+      try {
+        const r = await api("/api/assistant/train", site ? { site_url: site } : {});
+        await refresh();
+        toast(`Conoscenza aggiornata: ${r.pages} pagine, ${r.chars} caratteri.`);
+      } catch (e) {
+        if (box) box.textContent = e.message;
+        report(e);
+      } finally {
+        b.disabled = false;
+      }
+      return;
+    }
+    if (a === "copy-webhook") {
+      await navigator.clipboard.writeText(`${location.origin}/api/webhooks/${b.dataset.provider}`);
+      return toast("URL del webhook copiato.");
+    }
+    if (a === "channel-verify") {
+      b.disabled = true;
+      try {
+        const r = await api("/api/channels/verify", { id: Number(id) });
+        await refresh();
+        toast(
+          r.verification.ok
+            ? `Verificato: ${r.verification.detail || "collegamento attivo"}`
+            : `Verifica non riuscita: ${r.verification.error}`,
+        );
+      } catch (e) {
+        report(e);
+      } finally {
+        b.disabled = false;
+      }
+      return;
+    }
+    if (a === "channel-delete")
+      return confirmAction(
+        "Scollegare il canale?",
+        "Verranno eliminate anche le conversazioni e i messaggi di questo canale. I token salvati saranno rimossi.",
+        async () => {
+          await api("/api/channels/delete", { id: Number(id) });
+          activeConversation = null;
+          threadCache = null;
+          await refresh();
+          toast("Canale scollegato.");
+        },
+      );
+    if (a === "channel-test") {
+      const provider = b.dataset.provider;
+      const to = ($(`#test-to-${provider}`)?.value || "").trim();
+      if (!to) return toast("Inserisci il destinatario del messaggio di prova.");
+      b.disabled = true;
+      try {
+        await api("/api/channels/test", { id: Number(id), to });
+        toast("Messaggio di prova inviato.");
+      } catch (e) {
+        report(e);
+      } finally {
+        b.disabled = false;
+      }
+      return;
+    }
+    if (a === "conv-resume") {
+      await api("/api/conversations/state", { id: Number(id), status: "open" });
+      threadCache = null;
+      await refresh();
+      return toast("Assistente riattivato sulla conversazione.");
     }
     if (a === "new-client" || a === "edit-client") return clientModal(id);
     if (a === "new-project" || a === "edit-project") return projectModal(id);

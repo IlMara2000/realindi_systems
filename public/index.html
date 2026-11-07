@@ -19,11 +19,11 @@
 
     <div class="ticker" aria-hidden="true">
       <div class="ticker-track">
-        <span
+        <span data-slot="ticker"
           >Gestionali e CRM ◆ Automazioni ◆ Sviluppo web ◆ Ottimizzazione dei
           processi ◆ Integrazioni digitali ◆</span
         >
-        <span
+        <span data-slot="ticker"
           >Gestionali e CRM ◆ Automazioni ◆ Sviluppo web ◆ Ottimizzazione dei
           processi ◆ Integrazioni digitali ◆</span
         >
@@ -33,7 +33,7 @@
     <header class="topstrip">
       <a class="topstrip-brand" href="/">
         <img class="logo-mark" src="/assets/logo-realindi.png" alt="" width="30" height="30" />
-        REALINDI SYSTEMS
+        <span data-slot="brand">REALINDI SYSTEMS</span>
       </a>
       <button
         type="button"
@@ -54,17 +54,18 @@
       <!-- HERO -->
       <section class="band band-paper">
         <div class="hero section">
-          <p class="label">REALINDI SYSTEMS / SVILUPPO SOFTWARE &amp; AUTOMAZIONI</p>
-          <h1>SOFTWARE SU MISURA,<br />FATTO PER <em>ESSERE USATO.</em></h1>
-          <p class="hero-lead">
+          <!-- edit-slot:hero -->
+          <p class="label" data-slot="hero.label">REALINDI SYSTEMS / SVILUPPO SOFTWARE &amp; AUTOMAZIONI</p>
+          <h1 data-slot="hero.title">SOFTWARE SU MISURA,<br />FATTO PER <em data-slot="hero.emphasis">ESSERE USATO.</em></h1>
+          <p class="hero-lead" data-slot="hero.lead">
             Sono Daniele. Sviluppo gestionali, applicazioni web e automazioni che
             semplificano il lavoro di professionisti e imprese. Analizzo i processi,
             elimino i passaggi inutili e trasformo esigenze concrete in soluzioni
             digitali.
           </p>
           <div class="hero-actions">
-            <a class="btn btn-primary" data-booking href="#contatti">Prenota una chiacchierata</a>
-            <a class="btn btn-ghost" href="#servizi">Scopri cosa faccio ↓</a>
+            <a class="btn btn-primary" data-booking data-slot="hero.cta_primary" href="#contatti">Prenota una chiacchierata</a>
+            <a class="btn btn-ghost" data-slot="hero.cta_secondary" href="#servizi">Scopri cosa faccio ↓</a>
           </div>
         </div>
       </section>
@@ -72,9 +73,10 @@
       <!-- 01 SERVIZI -->
       <section class="band band-sage" id="servizi">
         <div class="section">
-          <p class="label">01 / SERVIZI</p>
-          <h2 class="sec-title">SOLUZIONI CONCRETE,<br />SENZA COMPLICAZIONI.</h2>
-          <ul class="rows">
+          <!-- edit-slot:services -->
+          <p class="label" data-slot="services.label">01 / SERVIZI</p>
+          <h2 class="sec-title" data-slot="services.title">SOLUZIONI CONCRETE,<br />SENZA COMPLICAZIONI.</h2>
+          <ul class="rows" data-list="services.items">
             <li class="row">
               <span class="row-num">01</span>
               <div class="row-body">
@@ -129,31 +131,34 @@
       <!-- 02 CHI SONO -->
       <section class="band band-paper" id="chi-sono">
         <div class="section section-split">
+          <!-- edit-slot:about -->
           <div>
-            <p class="label">02 / CHI SONO</p>
-            <h2 class="sec-title">PRIMA IL PROBLEMA.<br />POI LA SOLUZIONE.</h2>
-            <p class="section-text">
+            <p class="label" data-slot="about.label">02 / CHI SONO</p>
+            <h2 class="sec-title" data-slot="about.title">PRIMA IL PROBLEMA.<br />POI LA SOLUZIONE.</h2>
+            <p class="section-text" data-slot="about.intro">
               Un unico professionista che trasforma esigenze operative concrete in
               strumenti digitali semplici, funzionali e su misura.
             </p>
           </div>
           <div class="section-text">
-            <p>
-              Mi chiamo Daniele e REALINDI SYSTEMS è la mia attività indipendente
-              dedicata allo sviluppo software e all'ottimizzazione dei processi di
-              lavoro.
-            </p>
-            <p>
-              Ho maturato esperienza nell'automazione di attività operative, soprattutto
-              nel settore immobiliare, sviluppando strumenti che semplificano la
-              gestione di dati, contatti e attività quotidiane.
-            </p>
-            <p>
-              Il mio metodo è semplice: capire come lavori, individuare cosa può essere
-              migliorato e costruire una soluzione realmente utile. Seguo direttamente
-              lo sviluppo, dal confronto iniziale ai miglioramenti successivi.
-            </p>
-            <ul class="facts">
+            <div data-list="about.paragraphs">
+              <p>
+                Mi chiamo Daniele e REALINDI SYSTEMS è la mia attività indipendente
+                dedicata allo sviluppo software e all'ottimizzazione dei processi di
+                lavoro.
+              </p>
+              <p>
+                Ho maturato esperienza nell'automazione di attività operative, soprattutto
+                nel settore immobiliare, sviluppando strumenti che semplificano la
+                gestione di dati, contatti e attività quotidiane.
+              </p>
+              <p>
+                Il mio metodo è semplice: capire come lavori, individuare cosa può essere
+                migliorato e costruire una soluzione realmente utile. Seguo direttamente
+                lo sviluppo, dal confronto iniziale ai miglioramenti successivi.
+              </p>
+            </div>
+            <ul class="facts" data-list="about.facts">
               <li>1. Analisi delle esigenze e dei processi.</li>
               <li>2. Soluzioni personalizzate, senza funzionalità superflue.</li>
               <li>3. Comunicazione diretta e obiettivi chiari.</li>
@@ -166,9 +171,10 @@
       <!-- 03 LAVORI -->
       <section class="band band-sky" id="lavori">
         <div class="section">
-          <p class="label">03 / LAVORI</p>
-          <h2 class="sec-title">DALLE IDEE<br />AGLI STRUMENTI CONCRETI.</h2>
-          <ul class="cards">
+          <!-- edit-slot:works -->
+          <p class="label" data-slot="works.label">03 / LAVORI</p>
+          <h2 class="sec-title" data-slot="works.title">DALLE IDEE<br />AGLI STRUMENTI CONCRETI.</h2>
+          <ul class="cards" data-list="works.items">
             <li class="card">
               <p class="card-kicker">PROGETTO 01</p>
               <h3>Automazioni per il settore immobiliare</h3>
@@ -200,22 +206,25 @@
       <!-- 04 CONTATTI -->
       <section class="band band-butter" id="contatti">
         <div class="section">
-          <p class="label">04 / CONTATTI</p>
-          <h2 class="sec-title">HAI UN'IDEA<br />DA REALIZZARE?</h2>
+          <!-- edit-slot:contacts -->
+          <p class="label" data-slot="contacts.label">04 / CONTATTI</p>
+          <h2 class="sec-title" data-slot="contacts.title">HAI UN'IDEA<br />DA REALIZZARE?</h2>
           <div class="contact-card">
             <div class="section-text">
-              <p>
-                Un gestionale da creare, un processo da automatizzare o semplicemente un
-                modo migliore di organizzare il tuo lavoro?
-              </p>
-              <p>
-                Raccontami cosa vorresti migliorare. Valutiamo insieme la soluzione più
-                adatta, senza complicazioni inutili.
-              </p>
+              <div data-list="contacts.paragraphs">
+                <p>
+                  Un gestionale da creare, un processo da automatizzare o semplicemente un
+                  modo migliore di organizzare il tuo lavoro?
+                </p>
+                <p>
+                  Raccontami cosa vorresti migliorare. Valutiamo insieme la soluzione più
+                  adatta, senza complicazioni inutili.
+                </p>
+              </div>
             </div>
             <div class="hero-actions">
               <a class="btn btn-primary" data-booking href="#contatti">Prenota una chiacchierata</a>
-              <a class="btn btn-ghost" href="/bio">I miei contatti →</a>
+              <a class="btn btn-ghost" data-slot="contacts.secondary" href="/bio">I miei contatti →</a>
             </div>
           </div>
         </div>
@@ -223,7 +232,8 @@
     </main>
 
     <footer class="footer">
-      <p class="footer-brand">© 2026 REALINDI SYSTEMS · Soluzioni digitali, problemi reali.</p>
+      <!-- edit-slot:footer -->
+      <p class="footer-brand" data-slot="footer">© 2026 REALINDI SYSTEMS · Soluzioni digitali, problemi reali.</p>
     </footer>
 
     <div class="drawer-scrim" aria-hidden="true"></div>
