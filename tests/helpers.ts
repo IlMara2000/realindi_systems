@@ -1,21 +1,20 @@
 // Utilità condivise dalla suite: DB di test isolato, client HTTP con cookie,
 // fixture riprese da tests/test_crm.py e helper XML/backup.
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { Client as PgClient } from "pg";
 import JSZip from "jszip";
 import { DatabaseSync } from "node:sqlite";
 import { XMLParser } from "fast-xml-parser";
 
-// Puntare al database di test PRIMA di ogni uso di src/db.ts.
-const envText = readFileSync(resolve(process.cwd(), ".env"), "utf8");
-const testUrl = envText
-  .split("\n")
-  .find((line) => line.startsWith("DATABASE_URL_TEST="))
-  ?.slice("DATABASE_URL_TEST=".length)
-  .trim();
-if (!testUrl) throw new Error("DATABASE_URL_TEST mancante in .env");
-process.env.DATABASE_URL = testUrl;
+// Puntare al database della run PRIMA di ogni uso di src/db.ts. Il database lo
+// crea tests/global-setup.ts per ogni esecuzione: senza, la suite finirebbe sul
+// realindi_test condiviso e due run si troncherebbero le tabelle a vicenda.
+const runUrl = process.env.DATABASE_URL_TEST_RUN;
+if (!runUrl) {
+  throw new Error(
+    "DATABASE_URL_TEST_RUN assente: eseguire i test con vitest, che prepara il database della run in tests/global-setup.ts.",
+  );
+}
+process.env.DATABASE_URL = runUrl;
 
 export interface TestResponse {
   status: number;
