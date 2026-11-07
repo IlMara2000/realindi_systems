@@ -3,10 +3,15 @@
   "installCommand": "npm ci",
   "buildCommand": "npm run build",
   "outputDirectory": "public",
+  "redirects": [
+    { "source": "/index.html", "destination": "/", "permanent": false },
+    { "source": "/bio.html", "destination": "/bio", "permanent": false }
+  ],
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api?path=$1" },
+    { "source": "/", "destination": "/api?page=home" },
+    { "source": "/bio", "destination": "/api?page=bio" },
     { "source": "/app", "destination": "/app.html" },
-    { "source": "/bio", "destination": "/bio.html" },
     { "source": "/ricevute", "destination": "/ricevute.html" },
     { "source": "/book/:slug*", "destination": "/app.html" }
   ],

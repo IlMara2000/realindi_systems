@@ -18,6 +18,22 @@ interface VercelResponse {
   end(body?: Buffer | string): void;
 }
 
+// Le pagine che il server deve generare per forza (vetrina e link-in-bio hanno
+// un HTML diverso per chi ha la sessione) vivono fuori dalla radice statica e
+// arrivano qui con ?page=. Solo questi nomi sono ammessi: la funzione non deve
+// diventare un modo per raggiungere percorsi arbitrari.
+const PAGE_ROUTES = new Map<string, string>([
+  ["home", "/"],
+  ["bio", "/bio"],
+]);
+
+function notFound(res: VercelResponse): void {
+  res.statusCode = 404;
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("Cache-Control", "no-store");
+  res.end(JSON.stringify({ error: "Pagina non trovata." }));
+}
+
 async function readBody(req: VercelRequest): Promise<Buffer> {
   // Vercel pre-parsa i body JSON: lo riserializziamo (le chiavi restano in ordine).
   if (req.body !== undefined && req.body !== null) {
@@ -41,8 +57,16 @@ export default async function apiHandler(
   res: VercelResponse,
 ): Promise<void> {
   const url = new URL(req.url ?? "/", "http://localhost");
+  const pageName = url.searchParams.get("page");
+  url.searchParams.delete("page");
+  const pagePath = pageName === null ? null : (PAGE_ROUTES.get(pageName) ?? null);
+  if (pageName !== null && pagePath === null) {
+    notFound(res);
+    return;
+  }
+
   const segments = url.searchParams.get("path");
-  const apiPath = segments ? `/api/${segments}` : "/api/";
+  const apiPath = pagePath ?? (segments ? `/api/${segments}` : "/api/");
   url.searchParams.delete("path");
 
   const forwarded = headerValue(req.headers["x-forwarded-for"]);

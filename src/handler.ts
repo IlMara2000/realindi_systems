@@ -162,11 +162,18 @@ const EDIT_SLOT_RE = /<!--\s*edit-slot:([a-z-]+)\s*-->/g;
  * la sessione: vengono iniettati qui, lato server, al posto dei segnaposto.
  * Nasconderli con il CSS non basta, e l'endpoint di salvataggio ricontrolla
  * comunque la sessione.
+ *
+ * I due file stanno in `public/pages/` e non nella radice di `public/`: su
+ * Vercel i file statici hanno la precedenza sui rewrite, quindi con
+ * `public/index.html` al suo posto il rewrite di `/` veniva ignorato e questa
+ * funzione non veniva mai eseguita in produzione. Per lo stesso motivo le
+ * pagine che non dipendono dalla sessione (`app.html`, `ricevute.html`)
+ * restano servite staticamente da `serveStatic`.
  */
 function serveEditablePage(file: string, authenticated: boolean): HandlerResponse {
   let html: string;
   try {
-    html = readFileSync(new URL(`../public/${file}`, import.meta.url), "utf8");
+    html = readFileSync(new URL(`../public/pages/${file}`, import.meta.url), "utf8");
   } catch {
     return sendError(404, "Pagina non trovata.");
   }
