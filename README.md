@@ -26,10 +26,14 @@ Variabili d’ambiente (opzionali; senza di esse le integrazioni restano disatti
 | Variabile | Uso |
 |---|---|
 | `DATABASE_URL` | Connessione PostgreSQL (Prisma) |
-| `DATABASE_URL_TEST` | Database usato dalla suite di test |
+| `DATABASE_URL_TEST` | Connessione **modello** per la suite di test: i test girano su un database creato per ogni esecuzione accanto a questo (vedi sotto) |
 | `INTEGRATIONS_KEY` | Chiave per cifrare (AES-256-GCM) le credenziali Google/Apple, dei canali WhatsApp/Instagram/SMS e la chiave AI: generane una lunga e casuale e non cambiarla mai dopo il primo collegamento |
 | `GOOGLE_CLIENT_ID` | Client OAuth di Google Cloud |
 | `GOOGLE_CLIENT_SECRET` | Segreto OAuth di Google Cloud |
+
+**Suite di test (`npm test`).** `DATABASE_URL_TEST` non è il database su cui girano i test: è solo il modello di connessione, da cui la suite ricava host, credenziali e `sslmode`, mentre il nome del database serve solo come punto di partenza. Ogni esecuzione crea accanto a questo un database proprio — `realindi_test_run_<timestamp>_<nonce>` — vi applica le migrazioni di `prisma/migrations` e lo elimina alla fine; quelli rimasti da una run interrotta vengono cancellati al successivo avvio dopo un'ora. Due `npm test` in parallelo non si toccano e il database indicato in `DATABASE_URL_TEST` non viene mai modificato.
+
+Servono due cose: che quel database **esista** (può restare vuoto, nessuna tabella: basta `createdb realindi_test`) e che il ruolo Postgres abbia il privilegio **`CREATEDB`**, perché la suite crea e distrugge database. Con un ruolo senza quel privilegio il primo test si ferma con `permission denied to create database`. La variabile può arrivare anche dall'ambiente invece che dal file `.env` — è il caso della CI — e in quel caso ha la precedenza sul file.
 
 **Google (Calendar + Gmail):** crea un progetto su console.cloud.google.com, attiva le API *Google Calendar* e *Gmail*, crea una credenziale OAuth client di tipo *Web application* con tra i redirect URI autorizzati `https://<dominio>/api/integrations/google/callback`, poi imposta le tre variabili. In Impostazioni → Integrazioni premi **Collega Google**; l’app è in Production, quindi i primi accessi vanno autorizzati utente per utente. Google serve per la sincronizzazione del calendario e per leggere l’inbox Gmail.
 
@@ -88,10 +92,23 @@ L'auto-risposta si attiva solo con tre condizioni: interruttore globale in *Assi
 ### Verifiche (versione TypeScript)
 
 ```sh
-npm test          # suite Vitest
+npm test          # suite Vitest (applica le migrazioni al database della run)
 npx tsc --noEmit  # controllo tipi
-npm run build     # generate + db push + tsc
+npm run db:check  # migrazioni ancora allineate a schema.prisma
+npm run build     # generate + migrazioni + tsc
 ```
+
+### Migrazioni del database
+
+Lo schema vive in `prisma/migrations/`, non più in un `db push`: ogni modifica è un file SQL versionato, applicato una sola volta e registrato in `_prisma_migrations`.
+
+```sh
+npm run db:migrate   # applica le migrazioni mancanti (lo usa anche il deploy Vercel)
+```
+
+Per cambiare lo schema: modifica `prisma/schema.prisma`, crea la migrazione con `npx prisma migrate dev --name <nome>` (serve un database su cui poter creare il database ombra), rileggi il file SQL generato e committalo insieme allo schema. Una modifica allo schema senza migrazione non arriva più in produzione, e la CI la intercetta: `npm run db:check` costruisce due database temporanei, uno dalle migrazioni e uno dal solo schema, e confronta tabelle, colonne, tipi e indici. Non confronta i default, perché Postgres li riscrive aggiungendo i cast `::text` e segnalerebbe differenze inesistenti.
+
+Un database già popolato non ha storia di migrazioni: alla prima esecuzione `npm run db:migrate` lo riconosce (errore P3005) e, dopo aver verificato che tutte le tabelle dello schema esistano, marca la migrazione iniziale come applicata invece di ricreare tutto. Se invece mancano tabelle si ferma e lo dice: l'allineamento va fatto a mano.
 
 ## Avvio
 

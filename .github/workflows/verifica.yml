@@ -50,17 +50,19 @@ jobs:
       - name: Dipendenze
         run: npm ci
 
-      - name: Client Prisma e configurazione
+      - name: Client Prisma
         run: |
           # generated/ è escluso dal versionamento: senza questo passo né il
-          # typecheck né i test troverebbero il client.
+          # typecheck né i test troverebbero il client. Le credenziali del
+          # database arrivano da `env` qui sopra: tests/global-setup.ts legge
+          # DATABASE_URL_TEST dall'ambiente, quindi in CI non serve un .env.
           npm run generate
-          # global-setup.ts legge DATABASE_URL_TEST dal file .env, che in CI
-          # non esiste perché è ignorato da git.
-          printf 'DATABASE_URL=%s\nDATABASE_URL_TEST=%s\n' "$DATABASE_URL" "$DATABASE_URL_TEST" > .env
 
       - name: Typecheck
         run: npx tsc --noEmit
+
+      - name: Migrazioni allineate allo schema
+        run: npm run db:check
 
       - name: Test
         run: npm test

@@ -1,7 +1,7 @@
 // Isolamento del database fra esecuzioni della suite.
 //
 // Ogni `vitest run` crea un database Postgres dedicato (prefisso
-// realindi_test_run_), ci applica il DDL dello schema Prisma e lo elimina alla
+// realindi_test_run_), ci applica le migrazioni versionate e lo elimina alla
 // fine. Due run contemporanee — o un worker rimasto vivo da una run interrotta
 // — scrivono quindi su database diversi e non possono più troncare le tabelle
 // l'una dell'altra: era questa la causa dei fallimenti intermittenti (setup
@@ -19,9 +19,21 @@ const STALE_MS = 60 * 60 * 1000;
 
 let created: string | null = null;
 
-/** DATABASE_URL_TEST dal file .env: da lì si ricava il database madre. */
+/**
+ * DATABASE_URL_TEST dall'ambiente o, se lì non c'è, dal file .env: da questo URL
+ * si ricava il database madre accanto al quale nascono quelli delle run.
+ */
 function testUrlFromEnv(): string {
-  const text = readFileSync(resolve(process.cwd(), ".env"), "utf8");
+  const fromProcess = process.env.DATABASE_URL_TEST?.trim();
+  if (fromProcess) return fromProcess;
+
+  let text: string;
+  try {
+    text = readFileSync(resolve(process.cwd(), ".env"), "utf8");
+  } catch {
+    // In CI non esiste un file .env: la variabile deve arrivare dall'ambiente.
+    throw new Error("DATABASE_URL_TEST mancante: non è nell'ambiente e non c'è un file .env");
+  }
   const line = text.split("\n").find((l) => l.startsWith("DATABASE_URL_TEST="));
   const url = line?.slice("DATABASE_URL_TEST=".length).trim();
   if (!url) throw new Error("DATABASE_URL_TEST mancante in .env");
@@ -46,16 +58,17 @@ async function withClient<T>(url: string, fn: (c: Client) => Promise<T>): Promis
 }
 
 /**
- * DDL completo dello schema Prisma, lo stesso che `prisma db push` applica al
- * database di sviluppo. Calcolarlo qui evita di far girare db push contro
- * l'host pooled, dove l'applicazione a metà si interrompe.
+ * Applica le migrazioni di prisma/migrations al database della run: sono le
+ * stesse che girano in produzione (`npm run db:migrate`), quindi una migrazione
+ * rotta fa fallire i test invece di scoprirsi al deploy.
  */
-function schemaDdl(): string {
-  return execFileSync(
-    "npx",
-    ["prisma", "migrate", "diff", "--from-empty", "--to-schema", "prisma/schema.prisma", "--script"],
-    { encoding: "utf8", maxBuffer: 32 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"] },
-  );
+function applyMigrations(url: string): void {
+  execFileSync("npx", ["prisma", "migrate", "deploy"], {
+    encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, DATABASE_URL: url },
+  });
 }
 
 /**
@@ -100,7 +113,7 @@ export async function setup(): Promise<() => Promise<void>> {
   const url = databaseUrlFor(base, name);
   await withClient(base, (c) => c.query(`CREATE DATABASE "${name}"`).then(() => undefined));
   created = name;
-  await withClient(url, (c) => c.query(schemaDdl()).then(() => undefined));
+  applyMigrations(url);
 
   // tests/helpers.ts usa questo URL: nessun test tocca più realindi_test.
   process.env.DATABASE_URL_TEST_RUN = url;
