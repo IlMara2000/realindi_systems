@@ -52,6 +52,7 @@ import {
   removeApple,
 } from "./integrations.js";
 import { runSync } from "./sync.js";
+import { emitReceipt, listReceipts, validateReceiptFields } from "./receipts.js";
 import { sendMail, validateOutgoing, readInbox } from "./email.js";
 
 export interface HandlerRequest {
@@ -244,6 +245,8 @@ async function handleGet(req: HandlerRequest): Promise<HandlerResponse> {
 
   const token = parseCookie(req.headers.cookie, "crm_session");
   if (!(await auth(token))) return sendError(401, "Accedi per continuare.");
+
+  if (path === "/api/ricevute") return send(await listReceipts());
 
   if (path === "/api/estimates/catalog") return send(CATALOG);
 
@@ -500,6 +503,11 @@ async function handlePost(req: HandlerRequest): Promise<HandlerResponse> {
       create: { key: "site_bio", value },
     });
     return send({ ok: true });
+  }
+
+  if (path === "/api/ricevute") {
+    const emitted = await emitReceipt(validateReceiptFields(d));
+    return send({ receipt: emitted });
   }
 
   if (path === "/api/notes") {

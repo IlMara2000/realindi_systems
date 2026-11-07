@@ -167,6 +167,17 @@
   line-height: 1.5;
 }
 
+.rc-notice {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--inset);
+  color: var(--ink);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
 .rc-empty {
   margin: 12px 0 0;
   color: var(--muted);

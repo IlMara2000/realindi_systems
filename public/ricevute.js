@@ -1,11 +1,11 @@
 "use strict";
 
-/* Ricevute di cassa: numerazione progressiva per anno, importo in lettere,
-   registro locale delle ricevute emesse. Nessuna chiamata di rete: la pagina
-   funziona anche senza sessione del gestionale aperta. */
+/* Ricevute di cassa: numerazione progressiva per anno, importo in lettere e
+   registro su Postgres. Il numero lo assegna il server (unico per anno, mai il
+   browser): la pagina legge e scrive /api/ricevute con la sessione del CRM. */
 
 (function () {
-  const STORE_KEY = "realindi.ricevute.v1";
+  const EMITTENTE_KEY = "realindi.ricevute.emittente";
 
   const UNITA = [
     "zero", "uno", "due", "tre", "quattro", "cinque", "sei", "sette", "otto", "nove",
@@ -77,45 +77,82 @@
       .replace(/'/g, "&#39;");
   }
 
-  /* ---------- archivio ---------- */
+  /* ---------- registro sul server ---------- */
 
-  const vuoto = () => ({ anni: {}, items: [], emittente: "" });
+  let archivio = { anni: {}, items: [] };
+  let emittente = "";
+  let occupato = false;
 
-  function carica() {
+  try {
+    emittente = window.localStorage.getItem(EMITTENTE_KEY) || "";
+  } catch (errore) {
+    emittente = "";
+  }
+
+  function ricordaEmittente(valore) {
     try {
-      const grezzo = window.localStorage.getItem(STORE_KEY);
-      if (!grezzo) return vuoto();
-      const dati = JSON.parse(grezzo);
-      if (!dati || typeof dati !== "object") return vuoto();
-      return {
-        anni: dati.anni && typeof dati.anni === "object" ? dati.anni : {},
-        items: Array.isArray(dati.items) ? dati.items : [],
-        emittente: typeof dati.emittente === "string" ? dati.emittente : "",
+      window.localStorage.setItem(EMITTENTE_KEY, valore);
+    } catch (errore) {
+      /* solo un promemoria: se il browser lo blocca si continua senza */
+    }
+  }
+
+  async function chiamata(metodo, corpo) {
+    const risposta = await fetch("/api/ricevute", {
+      method: metodo,
+      credentials: "same-origin",
+      headers: corpo ? { "Content-Type": "application/json" } : undefined,
+      body: corpo ? JSON.stringify(corpo) : undefined,
+    });
+    if (risposta.status === 401) {
+      const problema = new Error("Sessione scaduta.");
+      problema.sessione = true;
+      throw problema;
+    }
+    const dati = await risposta.json().catch(function () {
+      return {};
+    });
+    if (!risposta.ok) throw new Error(dati.error || "Operazione non riuscita.");
+    return dati;
+  }
+
+  function daServer(riga) {
+    return {
+      id: riga.id,
+      numero: "R-" + riga.year + "-" + String(riga.number).padStart(4, "0"),
+      data: riga.issued_on,
+      luogo: riga.place,
+      versante: riga.payer,
+      cf: riga.tax_code,
+      importo: Number(riga.amount_cents) / 100,
+      lettere: riga.amount_words,
+      emittente: riga.issuer,
+      causale: riga.reason,
+    };
+  }
+
+  function mostraAvviso(testo) {
+    avviso.textContent = testo || "";
+    avviso.hidden = !testo;
+  }
+
+  async function caricaRegistro() {
+    try {
+      const dati = await chiamata("GET");
+      archivio = {
+        anni: dati.counters && typeof dati.counters === "object" ? dati.counters : {},
+        items: Array.isArray(dati.receipts) ? dati.receipts.map(daServer) : [],
       };
-    } catch (errore) {
-      return vuoto();
-    }
-  }
-
-  let archivio = carica();
-  let memoria = !disponibile();
-
-  function disponibile() {
-    try {
-      window.localStorage.setItem(STORE_KEY + ".probe", "1");
-      window.localStorage.removeItem(STORE_KEY + ".probe");
-      return true;
-    } catch (errore) {
-      return false;
-    }
-  }
-
-  function salva() {
-    if (memoria) return;
-    try {
-      window.localStorage.setItem(STORE_KEY, JSON.stringify(archivio));
-    } catch (errore) {
-      memoria = true;
+      mostraAvviso("");
+      disegnaRegistro();
+      aggiornaProssimo();
+    } catch (problema) {
+      if (problema.sessione) {
+        mostraAvviso("Accedi al gestionale per emettere e consultare le ricevute.");
+        errore("Serve la sessione del gestionale: accedi e ricarica la pagina.");
+      } else {
+        mostraAvviso("Registro non raggiungibile: " + problema.message);
+      }
     }
   }
 
@@ -134,6 +171,7 @@
   const sheet = document.getElementById("rc-sheet");
   const registro = document.getElementById("rc-reg");
   const vuotoBox = document.getElementById("rc-empty");
+  const avviso = document.getElementById("rc-notice");
 
   function oggi() {
     const adesso = new Date();
@@ -192,7 +230,7 @@
       "</div></div>" +
       '<div class="rc-amount">' +
       '<span class="rc-cifre">' + euro.format(importo) + "</span>" +
-      '<span class="rc-lettere">(' + (importo > 0 ? esc(importoInLettere(importo)) : "importo in lettere") + ")</span>" +
+      '<span class="rc-lettere">(' + (importo > 0 ? esc(ricevuta.lettere || importoInLettere(importo)) : "importo in lettere") + ")</span>" +
       "</div>" +
       '<div class="rc-fieldline"><div class="k">Causale</div><div class="v">' +
       riga(ricevuta.causale) +
@@ -208,7 +246,7 @@
 
   function disegnaRegistro() {
     registro.innerHTML = "";
-    const ricevute = archivio.items.slice().reverse();
+    const ricevute = archivio.items.slice();
     vuotoBox.hidden = ricevute.length > 0;
 
     ricevute.forEach(function (ricevuta) {
@@ -254,41 +292,59 @@
 
   /* ---------- azioni ---------- */
 
-  form.addEventListener("submit", function (evento) {
+  form.addEventListener("submit", async function (evento) {
     evento.preventDefault();
     errore("");
+    if (occupato) return;
 
-    const ricevuta = leggiForm();
+    const dati = leggiForm();
 
-    if (!ricevuta.data) return errore("Indica la data della ricevuta.");
-    if (!ricevuta.versante) return errore("Indica chi ha versato il contante.");
-    if (!(ricevuta.importo > 0)) return errore("L'importo deve essere maggiore di zero.");
-    if (!ricevuta.causale) return errore("Indica la causale della ricevuta.");
+    if (!dati.data) return errore("Indica la data della ricevuta.");
+    if (!dati.versante) return errore("Indica chi ha versato il contante.");
+    if (!(dati.importo > 0)) return errore("L'importo deve essere maggiore di zero.");
+    if (!dati.causale) return errore("Indica la causale della ricevuta.");
 
-    const anno = annoDi(ricevuta.data);
-    const emesso = Number(archivio.anni[anno] || 0) + 1;
-    ricevuta.numero = "R-" + anno + "-" + String(emesso).padStart(4, "0");
+    occupato = true;
+    const bottone = form.querySelector('button[type="submit"]');
+    bottone.disabled = true;
+    bottone.textContent = "Emissione…";
 
-    archivio.anni[anno] = emesso;
-    archivio.emittente = ricevuta.emittente;
-    archivio.items.push(ricevuta);
-    salva();
+    try {
+      const risposta = await chiamata("POST", {
+        date: dati.data,
+        place: dati.luogo,
+        payer: dati.versante,
+        tax_code: dati.cf,
+        amount_cents: Math.round(dati.importo * 100),
+        reason: dati.causale,
+        issuer: dati.emittente,
+      });
+      const ricevuta = daServer(risposta.receipt);
+      ricordaEmittente(dati.emittente);
+      disegnaFoglio(ricevuta);
+      // Il registro lo detta il server: ricarico invece di indovinare l'ordine
+      // (una ricevuta retrodatata va al suo posto, non in cima).
+      await caricaRegistro();
 
-    disegnaFoglio(ricevuta);
-    disegnaRegistro();
-    aggiornaProssimo();
+      campoVersante.value = "";
+      campoCf.value = "";
+      campoImporto.value = "";
+      campoCausale.value = "";
+      campoVersante.focus();
 
-    campoVersante.value = "";
-    campoCf.value = "";
-    campoImporto.value = "";
-    campoCausale.value = "";
-    campoVersante.focus();
-
-    if (memoria) {
-      errore("Il browser blocca la memoria locale: il registro non verrà conservato alla chiusura.");
+      window.print();
+    } catch (problema) {
+      if (problema.sessione) {
+        mostraAvviso("Accedi al gestionale per emettere le ricevute.");
+        errore("Sessione scaduta: accedi al gestionale e ricarica la pagina.");
+      } else {
+        errore(problema.message || "Non è stato possibile emettere la ricevuta.");
+      }
+    } finally {
+      occupato = false;
+      bottone.disabled = false;
+      bottone.textContent = "Emetti e stampa";
     }
-
-    window.print();
   });
 
   document.getElementById("rc-preview").addEventListener("click", function () {
@@ -301,8 +357,9 @@
   /* ---------- avvio ---------- */
 
   campoData.value = oggi();
-  campoEmittente.value = archivio.emittente || "";
+  campoEmittente.value = emittente;
   aggiornaProssimo();
   disegnaFoglio(leggiForm());
   disegnaRegistro();
+  caricaRegistro();
 })();

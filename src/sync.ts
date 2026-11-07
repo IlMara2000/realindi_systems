@@ -730,11 +730,35 @@ async function resolveConflict(
   }
 }
 
-async function pushOutbound(source: Source, errors: Array<{ source: string; message: string }>): Promise<void> {
+async function pushOutbound(
+  source: Source,
+  sources: Source[],
+  errors: Array<{ source: string; message: string }>,
+): Promise<void> {
   const p = prisma();
   const events = await p.calendarEvent.findMany();
-  const links = await p.eventLink.findMany({ where: { source } });
-  const linkByEvent = new Map(links.map((l) => [l.event_id, l]));
+  const allLinks = await p.eventLink.findMany();
+  const linkByEvent = new Map(allLinks.filter((l) => l.source === source).map((l) => [l.event_id, l]));
+
+  // `dirty` è globale sull'evento: azzerarlo al primo push riuscito farebbe
+  // saltare le altre sorgenti collegate, che non hanno ancora un legame (e
+  // quindi nemmeno un `link.dirty`). Va spento solo quando sono tutte allineate.
+  const clean = new Map<number, Set<string>>();
+  for (const l of allLinks) {
+    if (l.dirty) continue;
+    const set = clean.get(l.event_id) ?? new Set<string>();
+    set.add(l.source);
+    clean.set(l.event_id, set);
+  }
+  const markClean = (eventId: number, s: Source): void => {
+    const set = clean.get(eventId) ?? new Set<string>();
+    set.add(s);
+    clean.set(eventId, set);
+  };
+  const settled = (eventId: number): boolean => {
+    const set = clean.get(eventId);
+    return !!set && sources.every((s) => set.has(s));
+  };
 
   for (const ev of events) {
     const link = linkByEvent.get(ev.id) ?? null;
@@ -756,7 +780,7 @@ async function pushOutbound(source: Source, errors: Array<{ source: string; mess
         await p.eventLink.create({
           data: { event_id: ev.id, source, external_id: created.external_id, etag: created.etag, dirty: false },
         });
-        await p.calendarEvent.update({ where: { id: ev.id }, data: { dirty: false } });
+        markClean(ev.id, source);
       } else {
         try {
           const newEtag = await updateRemote(source, { external_id: link.external_id, etag: link.etag }, ev);
@@ -764,11 +788,18 @@ async function pushOutbound(source: Source, errors: Array<{ source: string; mess
             where: { id: link.id },
             data: { etag: newEtag ?? link.etag, dirty: false },
           });
-          await p.calendarEvent.update({ where: { id: ev.id }, data: { dirty: false } });
+          markClean(ev.id, source);
         } catch (err) {
-          if (err instanceof Conflict412) await resolveConflict(source, ev, link);
-          else throw err;
+          if (err instanceof Conflict412) {
+            // Il conflitto lascia il legame sporco: la sorgente non è allineata.
+            clean.get(ev.id)?.delete(source);
+            await resolveConflict(source, ev, link);
+          } else throw err;
         }
+      }
+
+      if (ev.dirty && settled(ev.id)) {
+        await p.calendarEvent.update({ where: { id: ev.id }, data: { dirty: false } });
       }
     } catch (err) {
       addError(errors, source, err);
@@ -784,12 +815,19 @@ async function applyRemote(
   const p = prisma();
   const links = await p.eventLink.findMany({ where: { source } });
   const linkByExt = new Map(links.map((l) => [l.external_id, l]));
+  // I legami creati da caldavInsert conservano l'URL della risorsa, mentre il
+  // parser ICS produce `url#uid`: senza il confronto per risorsa l'evento appena
+  // scritto verrebbe reimportato e un annullamento remoto resterebbe invisibile.
+  const linkByResource = new Map(links.map((l) => [l.external_id.split("#")[0], l]));
   const locals = await p.calendarEvent.findMany({ where: { id: { in: links.map((l) => l.event_id) } } });
   const localById = new Map(locals.map((e) => [e.id, e]));
 
   for (const remote of remotes) {
     if (!remote.external_id || !isImportable(remote)) continue;
-    const link = linkByExt.get(remote.external_id) ?? null;
+    const link =
+      linkByExt.get(remote.external_id) ??
+      linkByResource.get(remote.external_id.split("#")[0]) ??
+      null;
     const local = link ? localById.get(link.event_id) ?? null : null;
 
     if (remote.cancelled) {
@@ -912,7 +950,7 @@ export async function runSync(): Promise<SyncResult> {
 
   for (const source of sources) {
     try {
-      await pushOutbound(source, errors);
+      await pushOutbound(source, sources, errors);
     } catch (err) {
       addError(errors, source, err);
     }

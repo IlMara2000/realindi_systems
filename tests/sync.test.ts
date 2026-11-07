@@ -162,6 +162,230 @@ describe("POST /api/sync/calendar", () => {
     expect(r.body.pending).toBe(0);
   });
 
+  it("outbound: con Google e iCloud insieme l'evento arriva a tutti e due", async () => {
+    const c = await fresh();
+    await seedGoogle();
+    await seedApple();
+    const calendar = "https://p21-caldav.icloud.com/1234567890/calendars/Home/";
+    await sql("INSERT INTO sync_state(provider, calendar_path) VALUES ('icloud', $1)", [calendar]);
+    await makeEvent(c, "Sopralluogo", "2026-11-13T10:00:00.000Z", "2026-11-13T11:00:00.000Z");
+
+    const log = spyProviders((call) => {
+      if (call.url.includes("googleapis.com")) {
+        if (call.method === "POST") {
+          return new Response(
+            JSON.stringify({ id: "g-evt-1", etag: "\"etag-g\"", updated: "2026-11-07T09:00:00Z" }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response(JSON.stringify({ items: [], nextSyncToken: "tok-0" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (call.method === "PUT") {
+        return new Response(null, { status: 201, headers: { ETag: "\"etag-i\"" } });
+      }
+      return new Response(
+        '<?xml version="1.0" encoding="UTF-8"?><d:multistatus xmlns:d="DAV:"></d:multistatus>',
+        { status: 207, headers: { "content-type": "application/xml" } },
+      );
+    });
+
+    const r = await c.request("/api/sync/calendar", {});
+    expect(r.status).toBe(200);
+    expect(r.body.errors).toEqual([]);
+    expect(r.body.imported).toBe(0);
+    expect(r.body.pending).toBe(0);
+
+    // Un solo invio per provider: Google POST, iCloud PUT.
+    const posts = log.filter((x) => x.method === "POST" && x.url.includes("googleapis.com"));
+    expect(posts).toHaveLength(1);
+    expect(posts[0].body).toContain("Sopralluogo");
+
+    const puts = log.filter((x) => x.method === "PUT" && x.url.includes("icloud.com"));
+    expect(puts).toHaveLength(1);
+    expect(puts[0].url.startsWith(calendar)).toBe(true);
+    expect(puts[0].url.endsWith(".ics")).toBe(true);
+    expect(puts[0].body).toContain("SUMMARY:Sopralluogo");
+
+    // Un evento, due legami puliti.
+    const links = await sql("SELECT source, external_id, dirty FROM event_links ORDER BY source");
+    expect(links.map((l) => l.source)).toEqual(["google", "icloud"]);
+    expect(links[0].external_id).toBe("g-evt-1");
+    expect(links[1].external_id).toBe(puts[0].url);
+    expect(links.every((l) => l.dirty === false)).toBe(true);
+
+    const events = await sql("SELECT dirty FROM calendar_events");
+    expect(events).toHaveLength(1);
+    expect(events[0].dirty).toBe(false);
+
+    // Seconda sincronizzazione: il flag è davvero spento, niente da rispingere.
+    const r2 = await c.request("/api/sync/calendar", {});
+    expect(r2.body.errors).toEqual([]);
+    expect(r2.body.pending).toBe(0);
+    expect(log.filter((x) => x.method === "POST" && x.url.includes("googleapis.com"))).toHaveLength(1);
+    expect(log.filter((x) => x.method === "PUT" && x.url.includes("icloud.com"))).toHaveLength(1);
+    expect(await sql("SELECT id FROM calendar_events")).toHaveLength(1);
+    expect(await sql("SELECT id FROM event_links")).toHaveLength(2);
+  });
+
+  it("eliminato in locale: sparisce da Google e iCloud in una sola sincronizzazione", async () => {
+    const c = await fresh();
+    await seedGoogle();
+    await seedApple();
+    const calendar = "https://p21-caldav.icloud.com/1234567890/calendars/Home/";
+    await sql("INSERT INTO sync_state(provider, calendar_path) VALUES ('icloud', $1)", [calendar]);
+    const id = await makeEvent(
+      c,
+      "Riunione annullata",
+      "2026-11-14T09:00:00.000Z",
+      "2026-11-14T10:00:00.000Z",
+    );
+
+    // L'evento è già stato pubblicato su entrambi i calendari.
+    await sql(
+      "INSERT INTO event_links(event_id, source, external_id, etag, dirty) VALUES ($1, 'google', 'g-evt-1', 'etag-g', false)",
+      [id],
+    );
+    await sql(
+      "INSERT INTO event_links(event_id, source, external_id, etag, dirty) VALUES ($1, 'icloud', $2, 'abc', false)",
+      [id, calendar + "vecchio.ics"],
+    );
+
+    const del = await c.request("/api/events/delete", { id });
+    expect(del.status).toBe(200);
+
+    const log = spyProviders((call) => {
+      if (call.url.includes("googleapis.com")) {
+        return new Response(JSON.stringify({ items: [], nextSyncToken: "tok-0" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(
+        '<?xml version="1.0" encoding="UTF-8"?><d:multistatus xmlns:d="DAV:"></d:multistatus>',
+        { status: 207, headers: { "content-type": "application/xml" } },
+      );
+    });
+
+    const r = await c.request("/api/sync/calendar", {});
+    expect(r.status).toBe(200);
+    expect(r.body.errors).toEqual([]);
+    expect(r.body.pending).toBe(0);
+
+    // Un DELETE per provider, nella stessa sincronizzazione.
+    const deletes = log.filter((x) => x.method === "DELETE");
+    expect(deletes).toHaveLength(2);
+    const googleDel = deletes.find((x) => x.url.includes("googleapis.com"));
+    const icloudDel = deletes.find((x) => x.url.includes("icloud.com"));
+    expect(googleDel!.url).toBe(
+      "https://www.googleapis.com/calendar/v3/calendars/primary/events/g-evt-1",
+    );
+    expect(icloudDel!.url).toBe(calendar + "vecchio.ics");
+    expect(icloudDel!.headers["If-Match"]).toBe('"abc"');
+
+    // Nessuna traccia locale: prima i legami, poi la riga dell'evento.
+    expect(await sql("SELECT id FROM event_links")).toHaveLength(0);
+    expect(await sql("SELECT id FROM calendar_events")).toHaveLength(0);
+  });
+
+  it("annullato su iCloud: rimosso in locale e il legame Google resta", async () => {
+    const c = await fresh();
+    await seedGoogle();
+    await seedApple();
+    const calendar = "https://p21-caldav.icloud.com/1234567890/calendars/Home/";
+    await sql("INSERT INTO sync_state(provider, calendar_path) VALUES ('icloud', $1)", [calendar]);
+    await makeEvent(c, "Sopralluogo", "2026-11-15T10:00:00.000Z", "2026-11-15T11:00:00.000Z");
+
+    // Stato del finto server: la risorsa scritta via PUT e se è stata annullata.
+    let icsInviato: { url: string; body: string } | null = null;
+    let annullato = false;
+
+    const log = spyProviders((call) => {
+      if (call.url.includes("googleapis.com")) {
+        if (call.method === "POST") {
+          return new Response(
+            JSON.stringify({ id: "g-evt-1", etag: "\"etag-g\"", updated: "2026-11-07T09:00:00Z" }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response(JSON.stringify({ items: [], nextSyncToken: "tok-0" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (call.method === "PUT") {
+        icsInviato = { url: call.url, body: call.body };
+        return new Response(null, { status: 201, headers: { ETag: "\"etag-i\"" } });
+      }
+      if (call.method === "DELETE") return new Response(null, { status: 204 });
+
+      const inviato = icsInviato;
+      if (!annullato || !inviato) {
+        return new Response(
+          '<?xml version="1.0" encoding="UTF-8"?><d:multistatus xmlns:d="DAV:"></d:multistatus>',
+          { status: 207, headers: { "content-type": "application/xml" } },
+        );
+      }
+      // iCloud restituisce la stessa risorsa con STATUS:CANCELLED.
+      const ics = inviato.body.replace("STATUS:CONFIRMED", "STATUS:CANCELLED");
+      return new Response(
+        '<?xml version="1.0" encoding="UTF-8"?>' +
+          '<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">' +
+          "<d:response><d:href>" +
+          new URL(inviato.url).pathname +
+          "</d:href>" +
+          '<d:propstat><d:prop><d:getetag>"etag-i"</d:getetag>' +
+          "<c:calendar-data>" +
+          ics +
+          "</c:calendar-data>" +
+          "</d:prop></d:propstat></d:response>" +
+          "</d:multistatus>",
+        { status: 207, headers: { "content-type": "application/xml" } },
+      );
+    });
+
+    // 1. Prima sincronizzazione: l'evento viene pubblicato su entrambi i provider.
+    const primo = await c.request("/api/sync/calendar", {});
+    expect(primo.body.errors).toEqual([]);
+    expect((await sql("SELECT source FROM event_links ORDER BY source")).map((l) => l.source)).toEqual([
+      "google",
+      "icloud",
+    ]);
+    expect(icsInviato).not.toBeNull();
+
+    // 2. L'evento viene annullato su iCloud.
+    annullato = true;
+    const secondo = await c.request("/api/sync/calendar", {});
+    expect(secondo.status).toBe(200);
+    expect(secondo.body.errors).toEqual([]);
+    expect(secondo.body.removed).toBe(1);
+    expect(secondo.body.pending).toBe(1);
+
+    const evento = await sql("SELECT deleted_at FROM calendar_events");
+    expect(evento).toHaveLength(1);
+    expect(evento[0].deleted_at).toBeTruthy();
+
+    // Il legame iCloud si consuma, quello Google resta intatto.
+    expect(await sql("SELECT source, external_id FROM event_links")).toEqual([
+      { source: "google", external_id: "g-evt-1" },
+    ]);
+    expect(log.filter((x) => x.method === "DELETE")).toHaveLength(0);
+
+    // 3. Alla sincronizzazione successiva il tombstone si propaga a Google.
+    const terzo = await c.request("/api/sync/calendar", {});
+    expect(terzo.body.errors).toEqual([]);
+    expect(terzo.body.pending).toBe(0);
+    const deletes = log.filter((x) => x.method === "DELETE");
+    expect(deletes).toHaveLength(1);
+    expect(deletes[0].url).toBe(
+      "https://www.googleapis.com/calendar/v3/calendars/primary/events/g-evt-1",
+    );
+    expect(await sql("SELECT id FROM calendar_events")).toHaveLength(0);
+    expect(await sql("SELECT id FROM event_links")).toHaveLength(0);
+  });
+
   it("inbound: importa dalla finestra ed esclude i tipi personali", async () => {
     const c = await fresh();
     await seedGoogle();
