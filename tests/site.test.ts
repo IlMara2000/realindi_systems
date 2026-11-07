@@ -4,7 +4,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { startServer, type RunningServer } from "../scripts/dev-server.js";
 // Side-effect: carica DATABASE_URL_TEST da .env come helpers.ts.
 import "./helpers.js";
-import { makeClient, resetDb, sql } from "./helpers.js";
+import { httpFetch, makeClient, resetDb, sql } from "./helpers.js";
 
 let server: RunningServer;
 let base: string;
@@ -19,13 +19,13 @@ afterAll(async () => {
 });
 
 async function get(path: string) {
-  const res = await fetch(base + path);
+  const res = await httpFetch(base + path);
   const text = await res.text();
   return { status: res.status, text, type: res.headers.get("content-type") ?? "" };
 }
 
 async function getBytes(path: string) {
-  const res = await fetch(base + path);
+  const res = await httpFetch(base + path);
   const buf = new Uint8Array(await res.arrayBuffer());
   return { status: res.status, buf, type: res.headers.get("content-type") ?? "" };
 }
@@ -303,7 +303,7 @@ describe("bottoni di modifica", () => {
 describe("GET /api/site", () => {
   it("è pubblico e senza contenuti salvati non inventa una configurazione", async () => {
     await resetDb();
-    const res = await fetch(base + "/api/site");
+    const res = await httpFetch(base + "/api/site");
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.booking_path).toMatch(/^\/book\//);
@@ -316,7 +316,7 @@ describe("GET /api/site", () => {
 
 describe("POST /api/site", () => {
   it("senza sessione non salva (convenzione POST: 400)", async () => {
-    const res = await fetch(base + "/api/site", {
+    const res = await httpFetch(base + "/api/site", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ bio: { tagline: "x", links: [] } }),
@@ -342,7 +342,7 @@ describe("POST /api/site", () => {
     const saved = await c.request("/api/site", valid);
     expect(saved.status).toBe(200);
 
-    const res = await fetch(base + "/api/site");
+    const res = await httpFetch(base + "/api/site");
     const body = await res.json();
     expect(body.bio.tagline).toBe("Sviluppo su misura");
     expect(body.bio.links).toHaveLength(2);
@@ -401,7 +401,7 @@ describe("POST /api/site", () => {
     expect(saved.status).toBe(200);
     expect(saved.body.content.brand).toBe("Studio Rossi");
 
-    const res = await fetch(base + "/api/site");
+    const res = await httpFetch(base + "/api/site");
     const body = await res.json();
     expect(body.content.brand).toBe("Studio Rossi");
     expect(body.content.services.items).toHaveLength(1);
@@ -439,7 +439,7 @@ describe("POST /api/site", () => {
     };
     expect((await c.request("/api/site", { content: next })).status).toBe(200);
 
-    const body = await (await fetch(base + "/api/site")).json();
+    const body = await (await httpFetch(base + "/api/site")).json();
     expect(body.content.brand).toBe("Solo questo");
     expect(body.content.ticker).toBe("");
     expect(body.content.services.items).toEqual([]);
@@ -451,7 +451,7 @@ describe("POST /api/site", () => {
   });
 
   it("senza sessione non salva la vetrina", async () => {
-    const res = await fetch(base + "/api/site", {
+    const res = await httpFetch(base + "/api/site", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content: { brand: "Anonimo" } }),

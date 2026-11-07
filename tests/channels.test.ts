@@ -2,7 +2,7 @@
 import { createHmac } from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { startServer, type RunningServer } from "../scripts/dev-server.js";
-import { makeClient, resetDb, type TestClient } from "./helpers.js";
+import { httpFetch, makeClient, resetDb, type TestClient } from "./helpers.js";
 
 // Le credenziali dei canali sono cifrate: la suite usa una chiave dedicata.
 process.env.INTEGRATIONS_KEY ??= "test-integrations-key-per-i-canali-0123456789";
@@ -60,7 +60,7 @@ async function addWhatsAppChannel(c: TestClient, appSecret = "segreto-app-meta")
 
 describe("canali", () => {
   it("richiede la sessione e non restituisce i segreti", async () => {
-    const anon = await fetch(`${base}/api/channels`);
+    const anon = await httpFetch(`${base}/api/channels`);
     expect(anon.status).toBe(401);
 
     const c = await fresh();
@@ -111,7 +111,7 @@ describe("canali", () => {
     const data = Object.keys(params)
       .sort()
       .reduce((acc, key) => acc + key + params[key], url);
-    await fetch(url, {
+    await httpFetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -165,13 +165,13 @@ describe("webhook WhatsApp", () => {
   it("verifica l'handshake di Meta con il token del canale", async () => {
     const c = await fresh();
     await addWhatsAppChannel(c);
-    const ok = await fetch(
+    const ok = await httpFetch(
       `${base}/api/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=verify-wa-123&hub.challenge=12345`,
     );
     expect(ok.status).toBe(200);
     expect(await ok.text()).toBe("12345");
 
-    const bad = await fetch(
+    const bad = await httpFetch(
       `${base}/api/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=sbagliato&hub.challenge=1`,
     );
     expect(bad.status).toBe(403);
@@ -181,7 +181,7 @@ describe("webhook WhatsApp", () => {
     const c = await fresh();
     await addWhatsAppChannel(c);
     const raw = JSON.stringify(payload);
-    const res = await fetch(`${base}/api/webhooks/whatsapp`, {
+    const res = await httpFetch(`${base}/api/webhooks/whatsapp`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: raw,
@@ -195,7 +195,7 @@ describe("webhook WhatsApp", () => {
     await addWhatsAppChannel(c);
     const raw = JSON.stringify(payload);
     for (let i = 0; i < 2; i += 1) {
-      const res = await fetch(`${base}/api/webhooks/whatsapp`, {
+      const res = await httpFetch(`${base}/api/webhooks/whatsapp`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Hub-Signature-256": signed(raw) },
         body: raw,
@@ -234,7 +234,7 @@ describe("webhook SMS (Twilio)", () => {
     };
     const url = `${base}/api/webhooks/sms`;
 
-    const forged = await fetch(url, {
+    const forged = await httpFetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -245,7 +245,7 @@ describe("webhook SMS (Twilio)", () => {
     });
     expect(forged.status).toBe(403);
 
-    const signed = await fetch(url, {
+    const signed = await httpFetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -327,7 +327,7 @@ describe("assistente", () => {
       MessageSid: "SM-2",
     });
     const url = `${base}/api/webhooks/sms`;
-    await fetch(url, {
+    await httpFetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",

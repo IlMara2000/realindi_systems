@@ -6,7 +6,10 @@ export default defineConfig({
     globalSetup: ["./tests/global-setup.ts"],
     // I test condividono il database: eseguire i file in serie.
     fileParallelism: false,
-    testTimeout: 30000,
-    hookTimeout: 30000,
+    // Sopra HTTP_TIMEOUT_MS (30s in tests/helpers.ts): una richiesta bloccata
+    // viene abortita e il test riporta l'errore vero; il runner non deve
+    // troncare il test lasciando la richiesta ancora in volo sul server.
+    testTimeout: 60000,
+    hookTimeout: 60000,
   },
 });

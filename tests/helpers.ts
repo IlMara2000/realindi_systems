@@ -16,6 +16,19 @@ if (!runUrl) {
 }
 process.env.DATABASE_URL = runUrl;
 
+/**
+ * Limite esplicito per ogni richiesta della suite. Deve restare sotto il
+ * testTimeout di vitest.config.ts: così una richiesta che si blocca viene
+ * abortita e il test fallisce con l'errore vero, invece di essere tagliato
+ * dal runner lasciando la richiesta in volo sul server.
+ */
+export const HTTP_TIMEOUT_MS = 30_000;
+
+/** fetch verso il server di prova, con il limite di tempo sempre applicato. */
+export function httpFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  return fetch(url, { ...init, signal: AbortSignal.timeout(HTTP_TIMEOUT_MS) });
+}
+
 export interface TestResponse {
   status: number;
   body: any;
@@ -56,7 +69,7 @@ export function makeClient(base: string): TestClient {
     if (!opts.public && cookies.size > 0) {
       headers["Cookie"] = [...cookies].map(([k, v]) => `${k}=${v}`).join("; ");
     }
-    const res = await fetch(base + path, {
+    const res = await httpFetch(base + path, {
       method: data !== undefined ? "POST" : "GET",
       headers,
       body: data !== undefined ? JSON.stringify(data) : undefined,
