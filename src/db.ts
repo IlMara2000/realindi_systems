@@ -143,12 +143,16 @@ export async function verifyLogin(ip: string, password: string): Promise<LoginRe
 /** Primo avvio: imposta la password (almeno 12 caratteri) e crea la sessione. */
 export async function setupPassword(password: string): Promise<LoginResult> {
   const p = prisma();
-  if (await hasPassword()) throw new Error("ALREADY_SET");
   if (password.length < 12) throw new Error("TOO_SHORT");
   const salt = tokenHex(16);
-  await p.setting.create({
-    data: { key: "password", value: JSON.stringify([salt, hashPassword(password, salt)]) },
+  // Un solo INSERT: fra il controllo "esiste già?" e la scrittura non c'è più
+  // finestra, quindi due setup simultanei non si scontrano sulla chiave e chi
+  // arriva secondo riceve ALREADY_SET invece di una violazione di unicità.
+  const created = await p.setting.createMany({
+    data: [{ key: "password", value: JSON.stringify([salt, hashPassword(password, salt)]) }],
+    skipDuplicates: true,
   });
+  if (created.count === 0) throw new Error("ALREADY_SET");
   const token = tokenUrlSafe(32);
   await p.session.create({ data: { token: sha256Hex(token), expires: Date.now() / 1000 + 43200 } });
   return { ok: true, cookie: sessionCookie(token, 43200) };

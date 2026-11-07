@@ -11,6 +11,7 @@ import {
   loadSqliteDump,
   tomorrowRome,
   in30Days,
+  sql,
   type TestClient,
 } from "./helpers.js";
 
@@ -247,6 +248,38 @@ describe("CRM", () => {
     const stored = db.prepare("SELECT estimate FROM quotes").get() as any;
     db.close();
     expect(JSON.parse(stored.estimate).total).toBe(30000);
+  });
+
+  it("setup simultanei configurano l'account una volta sola", async () => {
+    // Tre prime configurazioni in parallelo: la verifica "esiste già la
+    // password?" e l'INSERT sono due passi distinti, quindi la corsa è reale.
+    // Qualunque cosa rispondano i perdenti, devono restare un solo account.
+    const passwords = ["Simultanea-uno-123!", "Simultanea-due-456!", "Simultanea-tre-789!"];
+    const esiti = await Promise.all(passwords.map((password) => makeClient(base).setup(password)));
+
+    expect(esiti.filter((r) => r.status === 200)).toHaveLength(1);
+    for (const esito of esiti.filter((r) => r.status !== 200)) {
+      // Chi perde trova l'account già configurato: un messaggio comprensibile,
+      // non la violazione di unicità (409) che l'INSERT non atomico produceva.
+      expect(
+        esito.status,
+        `risposta inattesa a un setup perdente: ${esito.status} ${JSON.stringify(esito.body)}`,
+      ).toBe(400);
+      expect(esito.body.error).toBe("Configurazione già completata.");
+    }
+
+    // Una sola password salvata, ed è quella della richiesta che ha vinto.
+    const rows = await sql("SELECT COUNT(*)::int AS n FROM settings WHERE key = 'password'");
+    expect(rows[0].n).toBe(1);
+
+    const winner = esiti.findIndex((r) => r.status === 200);
+    const login = await makeClient(base).request("/api/login", { password: passwords[winner] });
+    expect(login.status).toBe(200);
+
+    // La password di un setup perdente non è quella rimasta salvata.
+    const loser = passwords.findIndex((_, i) => i !== winner);
+    const denied = await makeClient(base).request("/api/login", { password: passwords[loser] });
+    expect(denied.status).toBe(400);
   });
 
   it("sicurezza e validazione", async () => {

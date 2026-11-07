@@ -866,8 +866,14 @@ async function handlePost(req: HandlerRequest): Promise<HandlerResponse> {
     if (path === "/api/setup") {
       if (await hasPassword()) throw new Invalid("Configurazione già completata.");
       if (password.length < 12) throw new Invalid("Usa una password di almeno 12 caratteri.");
-      const res = await setupPassword(password);
-      return send({ ok: true }, 200, "application/json; charset=utf-8", [["Set-Cookie", res.cookie]]);
+      try {
+        const res = await setupPassword(password);
+        return send({ ok: true }, 200, "application/json; charset=utf-8", [["Set-Cookie", res.cookie]]);
+      } catch (err) {
+        // Setup arrivato mentre un altro stava già configurando l'account.
+        if ((err as Error).message === "ALREADY_SET") throw new Invalid("Configurazione già completata.");
+        throw err;
+      }
     }
     try {
       const res = await verifyLogin(req.ip, password);
