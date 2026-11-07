@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>REALINDI · Ricevute di cassa</title>
+    <meta name="description" content="Genera ricevute di cassa per la ricezione di contanti con numerazione progressiva e importo in lettere." />
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/assets/favicon-192.png" />
+    <link rel="apple-touch-icon" href="/assets/app-touch.png" />
+    <meta name="theme-color" content="#e9edf4" />
+    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/ricevute.css" />
+    <script src="/ricevute.js" defer></script>
+  </head>
+  <body class="rc-page">
+    <main class="rc-wrap">
+      <header class="rc-head rc-noprint">
+        <a class="rc-back" href="/app">← Torna al workspace</a>
+        <h1>Ricevute di cassa</h1>
+        <p class="rc-lead">
+          Quietanza per la ricezione di contanti: numerazione progressiva per anno, importo in
+          lettere automatico, stampa o salvataggio in PDF dal dialogo di stampa.
+        </p>
+      </header>
+
+      <div class="rc-layout">
+        <section class="rc-panel rc-noprint" aria-labelledby="rc-form-title">
+          <h2 id="rc-form-title">Nuova ricevuta</h2>
+
+          <form id="rc-form" novalidate>
+            <div class="rc-grid">
+              <label class="rc-field">
+                <span>Data</span>
+                <input id="rc-data" name="data" type="date" required />
+              </label>
+
+              <label class="rc-field">
+                <span>Luogo</span>
+                <input id="rc-luogo" name="luogo" type="text" maxlength="120" placeholder="Es. Milano" autocomplete="off" />
+              </label>
+
+              <label class="rc-field">
+                <span>Ricevuto da (versante)</span>
+                <input id="rc-versante" name="versante" type="text" maxlength="160" placeholder="Nome e cognome" autocomplete="off" required />
+              </label>
+
+              <label class="rc-field">
+                <span>Codice fiscale / P. IVA</span>
+                <input id="rc-cf" name="cf" type="text" maxlength="32" placeholder="Facoltativo" autocomplete="off" />
+              </label>
+
+              <label class="rc-field">
+                <span>Importo in euro</span>
+                <input id="rc-importo" name="importo" type="number" step="0.01" min="0.01" placeholder="0,00" required />
+              </label>
+
+              <label class="rc-field">
+                <span>Emessa da</span>
+                <input id="rc-emittente" name="emittente" type="text" maxlength="160" placeholder="Nome o ragione sociale" autocomplete="off" />
+              </label>
+
+              <label class="rc-field full">
+                <span>Causale</span>
+                <textarea id="rc-causale" name="causale" maxlength="400" placeholder="Es. Acconto su preventivo n. 12 del 03/11/2026" required></textarea>
+              </label>
+            </div>
+
+            <p class="rc-error" id="rc-error" role="alert"></p>
+
+            <div class="rc-actions">
+              <button class="rc-btn rc-btn-primary" type="submit">Emetti e stampa</button>
+              <button class="rc-btn" type="button" id="rc-preview">Aggiorna anteprima</button>
+              <span class="rc-next" id="rc-next"></span>
+            </div>
+          </form>
+        </section>
+
+        <section class="rc-sheet-wrap" aria-label="Anteprima della ricevuta">
+          <div class="rc-sheet" id="rc-sheet"></div>
+        </section>
+      </div>
+
+      <section class="rc-panel rc-noprint" aria-labelledby="rc-reg-title">
+        <h2 id="rc-reg-title">Registro delle ricevute emesse</h2>
+        <table class="rc-table">
+          <thead>
+            <tr>
+              <th scope="col">Numero</th>
+              <th scope="col">Data</th>
+              <th scope="col">Versante</th>
+              <th scope="col" class="r">Importo</th>
+              <th scope="col" class="r">Stampa</th>
+            </tr>
+          </thead>
+          <tbody id="rc-reg"></tbody>
+        </table>
+        <p class="rc-empty" id="rc-empty">Nessuna ricevuta emessa finora.</p>
+      </section>
+    </main>
+  </body>
+</html>
