@@ -209,6 +209,71 @@
   text-align: right;
 }
 
+.rc-annullata {
+  color: var(--red);
+  font-weight: 600;
+}
+
+/* ---- dialogo di annullamento ---- */
+
+.rc-annulla-dialog {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 18, 22, 0.45);
+  z-index: 50;
+  padding: 16px;
+}
+
+.rc-annulla-card {
+  background: var(--paper);
+  border-radius: var(--radius);
+  box-shadow: var(--raised);
+  padding: 22px;
+  max-width: 440px;
+  width: 100%;
+}
+
+.rc-annulla-card h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+  letter-spacing: -0.01em;
+}
+
+.rc-annulla-numero {
+  margin: 0 0 10px;
+  font: 600 12px/1.5 ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--muted);
+}
+
+.rc-annulla-hint {
+  margin: 0 0 16px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.rc-annulla-actions {
+  justify-content: flex-end;
+}
+
+.rc-annulla-actions .rc-btn + .rc-btn {
+  margin-left: 8px;
+}
+
+.rc-btn-ghost {
+  background: transparent;
+  box-shadow: none;
+}
+
+@media print {
+  .rc-annulla-dialog {
+    display: none !important;
+  }
+}
+
 /* ---- foglio della ricevuta ---- */
 
 .rc-sheet-wrap {

@@ -97,8 +97,8 @@
     }
   }
 
-  async function chiamata(metodo, corpo) {
-    const risposta = await fetch("/api/ricevute", {
+  async function chiamata(metodo, corpo, percorso) {
+    const risposta = await fetch(percorso || "/api/ricevute", {
       method: metodo,
       credentials: "same-origin",
       headers: corpo ? { "Content-Type": "application/json" } : undefined,
@@ -128,6 +128,9 @@
       lettere: riga.amount_words,
       emittente: riga.issuer,
       causale: riga.reason,
+      annullata: Boolean(riga.cancelled_at),
+      annullataQuando: riga.cancelled_at || "",
+      annullataMotivo: riga.cancel_reason || "",
     };
   }
 
@@ -241,6 +244,16 @@
       "<div>Firma del versante</div>" +
       "<div>Firma per ricevuta" + (ricevuta.emittente ? "<br>" + esc(ricevuta.emittente) : "") + "</div>" +
       "</div>" +
+      (ricevuta.annullata
+        ? '<div class="rc-annullato">' +
+          '<div class="rc-annullato-stato">RICEVUTA ANNULLATA</div>' +
+          '<div class="rc-annullato-meta">' +
+          (ricevuta.annullataQuando
+            ? "Il " + dataIT.format(new Date(ricevuta.annullataQuando.replace(" ", "T") + ":00")) + " "
+            : "") +
+          "Per il motivo: " + riga(ricevuta.annullataMotivo) +
+          "</div></div>"
+        : "") +
       '<div class="rc-foot">Quietanza di cassa — documento non fiscale</div>';
   }
 
@@ -277,11 +290,27 @@
       });
       azione.appendChild(bottone);
 
+      const stato = document.createElement("td");
+      if (ricevuta.annullata) {
+        stato.className = "rc-annullata";
+        stato.textContent = "Annullata";
+      } else {
+        const bottoneAnnulla = document.createElement("button");
+        bottoneAnnulla.type = "button";
+        bottoneAnnulla.className = "rc-btn rc-btn-ghost";
+        bottoneAnnulla.textContent = "Annulla";
+        bottoneAnnulla.addEventListener("click", function () {
+          apriDialogoAnnullamento(ricevuta);
+        });
+        stato.appendChild(bottoneAnnulla);
+      }
+
       riga.appendChild(numero);
       riga.appendChild(data);
       riga.appendChild(versante);
       riga.appendChild(importo);
       riga.appendChild(azione);
+      riga.appendChild(stato);
       registro.appendChild(riga);
     });
   }
@@ -289,6 +318,65 @@
   function errore(messaggio) {
     errorBox.textContent = messaggio || "";
   }
+
+  /* ---------- dialogo di annullamento ---------- */
+
+  const dialogo = document.getElementById("rc-annulla-dialog");
+  const titoloDialogo = document.getElementById("rc-annulla-numero");
+  const campoMotivo = document.getElementById("rc-annulla-motivo");
+  const erroreDialogo = document.getElementById("rc-annulla-error");
+  const bottoneConferma = document.getElementById("rc-annulla-conferma");
+  const bottoneAnnullaDialogo = document.getElementById("rc-annulla-cancella");
+  let attuale = null;
+
+  function apriDialogoAnnullamento(ricevuta) {
+    attuale = ricevuta;
+    titoloDialogo.textContent = "Annulla la ricevuta " + ricevuta.numero + " — " + (ricevuta.versante || "senza versante");
+    campoMotivo.value = "";
+    erroreDialogo.textContent = "";
+    dialogo.hidden = false;
+    campoMotivo.focus();
+  }
+
+  function chiudiDialogo() {
+    dialogo.hidden = true;
+    attuale = null;
+  }
+
+  bottoneAnnullaDialogo.addEventListener("click", chiudiDialogo);
+
+  bottoneConferma.addEventListener("click", async function () {
+    if (!attuale || occupato) return;
+    const motivo = campoMotivo.value.trim();
+    if (!motivo) {
+      erroreDialogo.textContent = "Indica il motivo dell'annullamento.";
+      campoMotivo.focus();
+      return;
+    }
+
+    occupato = true;
+    bottoneConferma.disabled = true;
+    bottoneConferma.textContent = "Annullamento…";
+    erroreDialogo.textContent = "";
+
+    try {
+      await chiamata("POST", { id: attuale.id, reason: motivo }, "/api/ricevute/annulla");
+      chiudiDialogo();
+      await caricaRegistro();
+      mostraAvviso("Ricevuta " + attuale.numero + " annullata.");
+    } catch (problema) {
+      if (problema.sessione) {
+        mostraAvviso("Accedi al gestionale per annullare le ricevute.");
+        erroreDialogo.textContent = "Sessione scaduta: accedi al gestionale e ricarica la pagina.";
+      } else {
+        erroreDialogo.textContent = problema.message || "Non è stato possibile annullare la ricevuta.";
+      }
+    } finally {
+      occupato = false;
+      bottoneConferma.disabled = false;
+      bottoneConferma.textContent = "Conferma annullamento";
+    }
+  });
 
   /* ---------- azioni ---------- */
 
