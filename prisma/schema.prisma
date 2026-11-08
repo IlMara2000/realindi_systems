@@ -285,3 +285,17 @@ model Receipt {
   @@index([issued_on])
   @@map("receipts")
 }
+
+// ------------------------------------------------- assistente: limite di frequenza
+// Tentativi di generazione dell'assistente, uno per risposta richiesta. Lo stato
+// sta qui e non in memoria perché su Vercel ogni istanza ha la sua: i conteggi
+// devono valere per tutte. `at` è in millisecondi UTC.
+model AssistantHit {
+  id  Int    @id @default(autoincrement())
+  key String
+  at  BigInt
+
+  @@index([key, at])
+  @@index([at])
+  @@map("assistant_hits")
+}

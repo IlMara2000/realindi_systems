@@ -75,6 +75,7 @@ import {
   saveAssistantKey,
   trainFromSite,
 } from "./assistant.js";
+import { replyLimit } from "./ratelimit.js";
 import {
   conversationThread,
   ingestInbound,
@@ -527,6 +528,20 @@ async function handleGet(req: HandlerRequest): Promise<HandlerResponse> {
 
   if (path === "/api/ricevute") return send(await listReceipts());
 
+  if (path === "/api/assistant/limits") {
+    const bloccati = await replyLimit.blocked();
+    return send({
+      limits: bloccati
+        // ":anonimo" è il budget delle prove manuali, non un contatto vero.
+        .filter((l) => !l.key.endsWith(":anonimo"))
+        .map((l) => ({
+          channel: l.key.slice(0, l.key.indexOf(":")),
+          contact: l.key.slice(l.key.indexOf(":") + 1),
+          retry_after_seconds: Math.ceil(l.retryAfterMs / 1000),
+        })),
+    });
+  }
+
   if (path === "/api/estimates/catalog") return send(CATALOG);
 
   if (path === "/api/notes") return send({ notes: await listNotes() });
@@ -717,6 +732,7 @@ const INTEGER_SETTINGS: Record<string, [number, number]> = {
   booking_end: [1, 23],
   booking_notice: [0, 720],
   booking_horizon: [1, 180],
+  assistant_max_chars: [200, 2000],
 };
 
 // ------------------------------------------------------------ webhook canali
@@ -1206,6 +1222,9 @@ async function handlePost(req: HandlerRequest): Promise<HandlerResponse> {
         s[k] = [...new Set(days as number[])].sort((a, b) => a - b);
       } else if (k === "booking_enabled") {
         if (typeof d[k] !== "boolean") throw new Invalid("Disponibilità non valida.");
+        s[k] = d[k];
+      } else if (k === "assistant_enabled") {
+        if (typeof d[k] !== "boolean") throw new Invalid("Attivazione assistente non valida.");
         s[k] = d[k];
       } else if (k === "vat_rate" || k === "hourly_rate") {
         s[k] = numberValue(d[k], 0, k === "vat_rate" ? 100 : 100000).toString();

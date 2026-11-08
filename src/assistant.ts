@@ -6,6 +6,7 @@ import { prisma, settings } from "./db.js";
 import { openSecret, sealSecret } from "./crypto.js";
 import { Invalid, sha256Hex } from "./util.js";
 import { utcStamp } from "./notes.js";
+import { replyLimit } from "./ratelimit.js";
 
 export interface AssistantSettings {
   enabled: boolean;
@@ -41,6 +42,25 @@ function text(value: unknown, max = 2000): string {
   return value.trim().slice(0, max);
 }
 
+const MAX_CHARS_DEFAULT = 700;
+const MAX_CHARS_MIN = 200;
+const MAX_CHARS_MAX = 2000;
+
+const TRUTHY = new Set(["true", "1", "on", "yes", "sì", "si"]);
+
+/** Un flag salvato come stringa ("false", "0", "no") deve valere false. */
+function flag(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1;
+  return TRUTHY.has(String(value ?? "").trim().toLowerCase());
+}
+
+/** Intero delle impostazioni: accetta 600 e "600", rifiuta il resto. */
+function integer(value: unknown, fallback: number, min: number, max: number): number {
+  const n = typeof value === "number" ? value : Number(String(value ?? "").trim());
+  return Number.isInteger(n) && n >= min && n <= max ? n : fallback;
+}
+
 async function aiKey(): Promise<string | null> {
   const row = await prisma().setting.findUnique({ where: { key: "int_ai" } });
   if (row) {
@@ -58,7 +78,7 @@ async function aiKey(): Promise<string | null> {
 export async function assistantSettings(): Promise<AssistantSettings> {
   const s = await settings();
   return {
-    enabled: Boolean(s.assistant_enabled),
+    enabled: flag(s.assistant_enabled),
     name: text(s.assistant_name, 80) || "Assistente",
     tone: text(s.assistant_tone, 40) || "professionale",
     language: text(s.assistant_language, 20) || "auto",
@@ -67,7 +87,7 @@ export async function assistantSettings(): Promise<AssistantSettings> {
     site_url: text(s.assistant_site_url, 500),
     model: text(s.assistant_model, 100) || DEFAULT_MODEL,
     base_url: (text(s.assistant_base_url, 500) || DEFAULT_BASE_URL).replace(/\/+$/, ""),
-    max_chars: Number.isInteger(s.assistant_max_chars) ? Number(s.assistant_max_chars) : 700,
+    max_chars: integer(s.assistant_max_chars, MAX_CHARS_DEFAULT, MAX_CHARS_MIN, MAX_CHARS_MAX),
     handoff_email: text(s.assistant_handoff_email, 200),
     trained_at: text(s.assistant_trained_at, 40),
     key_configured: (await aiKey()) !== null,
@@ -482,6 +502,15 @@ export async function generateReply(input: {
   }
   if (!docs.length) {
     throw new Invalid("L'assistente non ha ancora conoscenza: premi «Aggiorna conoscenza dal sito» prima di generare una risposta.");
+  }
+
+  const limiterKey = `${input.channel}:${input.contactName || "anonimo"}`;
+  const limit = await replyLimit.check(limiterKey);
+  if (!limit.allowed) {
+    const minuti = Math.max(1, Math.ceil(limit.retryAfterMs / 60_000));
+    throw new Invalid(
+      `Troppe risposte in poco tempo a questo contatto: riprova tra ${minuti} ${minuti === 1 ? "minuto" : "minuti"}.`,
+    );
   }
 
   const sources = selectKnowledge(docs, tokens(input.text));

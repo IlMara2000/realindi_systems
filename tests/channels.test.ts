@@ -2,7 +2,8 @@
 import { createHmac } from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { startServer, type RunningServer } from "../scripts/dev-server.js";
-import { httpFetch, makeClient, resetDb, type TestClient } from "./helpers.js";
+import { httpFetch, makeClient, resetDb, sql, type TestClient } from "./helpers.js";
+import { MAX_REPLIES } from "../src/ratelimit.js";
 
 // Le credenziali dei canali sono cifrate: la suite usa una chiave dedicata.
 process.env.INTEGRATIONS_KEY ??= "test-integrations-key-per-i-canali-0123456789";
@@ -287,6 +288,84 @@ describe("assistente", () => {
     const state = await c.state();
     expect(state.assistant.enabled).toBe(true);
     expect(JSON.stringify(state)).not.toContain("sk-test-chiave-1234567890");
+  });
+
+  it("spegne l'assistente anche se il flag è una stringa", async () => {
+    const c = await fresh();
+    for (const raw of ["false", "0", "no", "FALSE"]) {
+      await sql("UPDATE settings SET value = $1 WHERE key = 'assistant_enabled'", [JSON.stringify(raw)]);
+      expect((await c.state()).assistant.enabled).toBe(false);
+    }
+    for (const raw of ["true", "1", "sì"]) {
+      await sql("UPDATE settings SET value = $1 WHERE key = 'assistant_enabled'", [JSON.stringify(raw)]);
+      expect((await c.state()).assistant.enabled).toBe(true);
+    }
+  });
+
+  it("/api/settings rifiuta un assistant_enabled non booleano", async () => {
+    const c = await fresh();
+    for (const bad of ["true", "false", 1, 0, null]) {
+      const res = await c.request("/api/settings", { assistant_enabled: bad });
+      expect(res.status).toBe(400);
+    }
+    expect((await c.request("/api/settings", { assistant_enabled: false })).status).toBe(200);
+    expect((await c.state()).assistant.enabled).toBe(false);
+  });
+
+  it("legge assistant_max_chars come intero e scarta i valori fuori scala", async () => {
+    const c = await fresh();
+    await sql("UPDATE settings SET value = $1 WHERE key = 'assistant_max_chars'", [JSON.stringify("600")]);
+    expect((await c.state()).assistant.max_chars).toBe(600);
+    for (const raw of ["", "abc", 0, 199, 2001, null]) {
+      await sql("UPDATE settings SET value = $1 WHERE key = 'assistant_max_chars'", [JSON.stringify(raw)]);
+      expect((await c.state()).assistant.max_chars).toBe(700);
+    }
+  });
+
+  it("elenca i contatti che hanno esaurito le risposte automatiche", async () => {
+    const c = await fresh();
+    const at = Date.now() - 1000;
+    for (let i = 0; i < MAX_REPLIES; i += 1) {
+      await sql("INSERT INTO assistant_hits (key, at) VALUES ($1, $2)", ["sms:Mario Rossi", at]);
+      await sql("INSERT INTO assistant_hits (key, at) VALUES ($1, $2)", ["sms:anonimo", at]);
+    }
+
+    const res = await c.request("/api/assistant/limits");
+    expect(res.status).toBe(200);
+    // Il budget delle prove manuali non è un contatto: non deve comparire.
+    expect(res.body.limits).toHaveLength(1);
+    expect(res.body.limits[0].channel).toBe("sms");
+    expect(res.body.limits[0].contact).toBe("Mario Rossi");
+    expect(res.body.limits[0].retry_after_seconds).toBeGreaterThan(0);
+  });
+
+  it("ferma le generazioni dopo il limite, senza raggiungere il provider", async () => {
+    const c = await fresh();
+    await c.request("/api/assistant", {
+      assistant_enabled: true,
+      assistant_name: "Sofia",
+      assistant_model: "modello-di-prova",
+      // Porta chiusa: ogni tentativo fallisce subito, senza uscire in rete.
+      assistant_base_url: "http://127.0.0.1:9",
+      api_key: "sk-test-limite-frequenza-1234567890",
+    });
+    await c.request("/api/assistant/train", { site_url: base });
+
+    for (let i = 0; i < MAX_REPLIES; i += 1) {
+      const res = await c.request("/api/assistant/preview", { text: "Quanto costa un sito?" });
+      expect(res.status).toBe(400);
+      // Fino al limite il blocco è del provider, non del limitatore.
+      expect(String(res.body.error)).not.toMatch(/Troppe risposte/);
+    }
+
+    const bloccata = await c.request("/api/assistant/preview", { text: "Quanto costa un sito?" });
+    expect(bloccata.status).toBe(400);
+    expect(String(bloccata.body.error)).toMatch(/Troppe risposte/);
+
+    const elenco = await c.request("/api/assistant/limits");
+    const prova = elenco.body.limits.find((l: any) => l.contact === "Cliente di prova");
+    expect(prova.channel).toBe("chat di prova");
+    expect(prova.retry_after_seconds).toBeGreaterThan(0);
   });
 
   it("auto-apprende dal sito e ricostruisce la scheda attività", async () => {
