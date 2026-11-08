@@ -98,6 +98,20 @@ npm run db:check  # migrazioni ancora allineate a schema.prisma
 npm run build     # generate + migrazioni + tsc
 ```
 
+### Test in locale senza il database cloud
+
+La suite e il controllo delle migrazioni hanno bisogno di un database. In CI usano un Postgres 17 effimero; in locale si fa lo stesso, invece di puntare all'istanza Prisma Postgres:
+
+```sh
+npm run test:locale
+```
+
+Lo script avvia un container `postgres:17` sulla porta 5432, attende che accetti connessioni TCP, esporta `DATABASE_URL` e `DATABASE_URL_TEST` verso `postgresql://postgres:postgres@localhost:5432/postgres` (la stessa URL della CI), esegue `db:migrate`, `db:check` e `npm test`, e infine rimuove il container. Se un container con quel nome è già attivo lo riusa e non lo ferma. Serve Docker; con la porta 5432 occupata: `PORTA_PG=5433 npm run test:locale`.
+
+Il file `.env` non viene modificato: le variabili valgono solo per quella esecuzione. Puntare i test all'endpoint diretto del database cloud non è una scorciatoia consigliata: le connessioni dirette sono limitate dal piano, la suite ne apre più di una in parallelo e ogni esecuzione crea database temporanei.
+
+`db:check` crea e distrugge database, quindi rifiuta di partire su un host remoto: serve un Postgres locale, oppure `npm run db:check -- --consenti-remoto` per assumersene la responsabilità.
+
 ### Migrazioni del database
 
 Lo schema vive in `prisma/migrations/`, non più in un `db push`: ogni modifica è un file SQL versionato, applicato una sola volta e registrato in `_prisma_migrations`.
@@ -105,6 +119,8 @@ Lo schema vive in `prisma/migrations/`, non più in un `db push`: ogni modifica 
 ```sh
 npm run db:migrate   # applica le migrazioni mancanti (lo usa anche il deploy Vercel)
 ```
+
+Le migrazioni e i comandi Prisma usano `DIRECT_URL` quando è impostata, e altrimenti `DATABASE_URL`. Conviene tenerle separate: `DIRECT_URL` punta all'endpoint diretto (`db.prisma.io`), perché il pooler non conserva lo stato di sessione che `migrate` richiede; `DATABASE_URL` resta quella pooled, usata dall'applicazione, perché le connessioni dirette sono limitate dal piano.
 
 Per cambiare lo schema: modifica `prisma/schema.prisma`, crea la migrazione con `npx prisma migrate dev --name <nome>` (serve un database su cui poter creare il database ombra), rileggi il file SQL generato e committalo insieme allo schema. Una modifica allo schema senza migrazione non arriva più in produzione, e la CI la intercetta: `npm run db:check` costruisce due database temporanei, uno dalle migrazioni e uno dal solo schema, e confronta tabelle, colonne, tipi e indici. Non confronta i default, perché Postgres li riscrive aggiungendo i cast `::text` e segnalerebbe differenze inesistenti.
 

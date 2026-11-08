@@ -109,6 +109,9 @@ const SECURITY_HEADERS: [string, string][] = [
   ["Content-Security-Policy", CSP],
 ];
 
+/** Oltre questo tempo il database è da considerare irraggiungibile. */
+const HEALTH_TIMEOUT_MS = 2_000;
+
 function send(
   value: unknown,
   status = 200,
@@ -124,6 +127,43 @@ function send(
 
 function sendError(status: number, message: string): HandlerResponse {
   return send({ error: message }, status);
+}
+
+/**
+ * Limite di tempo su una promise. Serve per il controllo di salute: Prisma non
+ * accetta un abort sulle query, e un database che non risponde lascerebbe la
+ * richiesta appesa fino al timeout della funzione, senza né 200 né 503.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("tempo scaduto")), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+/**
+ * Salute del servizio: pubblica perché serve a un monitor esterno, con una sola
+ * query e senza dettagli nella risposta (niente host, errori, versioni).
+ * 503 e non 500: «temporaneamente fuori servizio» è ciò che un monitor
+ * interpreta correttamente. Va servita prima di ensureDefaults(), che a sua
+ * volta interroga il database.
+ */
+async function databaseHealth(): Promise<HandlerResponse> {
+  try {
+    await withTimeout(prisma().$queryRaw`SELECT 1`, HEALTH_TIMEOUT_MS);
+    return send({ status: "ok" });
+  } catch {
+    return send({ status: "degraded" }, 503);
+  }
 }
 
 const MIME: Record<string, string> = {
@@ -1750,6 +1790,10 @@ function plusDaysRome(days: number): string {
 
 
 export async function handle(req: HandlerRequest): Promise<HandlerResponse> {
+  // Prima di ensureDefaults(): quella funzione interroga il database e, con il
+  // server irraggiungibile, bloccherebbe la richiesta per l'intero timeout di
+  // Prisma (~75 s) — rendendo inutile il limite del controllo di salute.
+  if (req.method === "GET" && req.path === "/api/health") return databaseHealth();
   await ensureDefaults();
   try {
     if (req.method === "GET") return await handleGet(req);

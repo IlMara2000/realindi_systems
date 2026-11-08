@@ -1,0 +1,79 @@
+# Sorveglianza dell'infrastruttura: separata da verifica.yml, che verifica il
+# codice. Qui si controlla che l'applicazione risponda e che il database sia
+# raggiungibile da entrambi gli endpoint.
+name: Sorveglianza database
+
+on:
+  schedule:
+    # GitHub non garantisce la puntualità: con */30 aspettarsi ritardi di
+    # 10-20 minuti. Serve ad accorgersi di un guasto, non a misurarlo.
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sorveglianza-database
+  cancel-in-progress: true
+
+jobs:
+  endpoint:
+    name: Endpoint di salute dell'applicazione
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Interroga /api/health
+        env:
+          URL: ${{ vars.PROD_URL }}
+        run: |
+          if [ -z "$URL" ]; then
+            echo "::error::variabile di repository PROD_URL non impostata"
+            exit 1
+          fi
+          code=$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 10 "$URL/api/health")
+          echo "HTTP $code"
+          cat /tmp/health.json || true
+          if [ "$code" != "200" ]; then
+            echo "::error::l'endpoint di salute ha risposto $code"
+            exit 1
+          fi
+
+  pooler:
+    name: Pooler Prisma ed endpoint diretto
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Confronta i due endpoint
+        env:
+          # Istanza di test e non produzione: un guasto del pooler è a livello
+          # di tenant, quindi si vede lo stesso, e la password di produzione
+          # non finisce su GitHub.
+          DATABASE_URL_TEST: ${{ secrets.DATABASE_URL_TEST }}
+        run: node scripts/diagnose-pooler.mjs 3
+
+  notifica:
+    name: Notifica
+    needs: [endpoint, pooler]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Invia messaggio su Slack
+        env:
+          WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          # Il controllo sta nella shell: i secret non sono leggibili in un `if:`.
+          if [ -z "$WEBHOOK" ]; then
+            echo "webhook Slack non configurato: resta la notifica email di GitHub"
+            exit 0
+          fi
+          curl -sS -X POST -H 'Content-Type: application/json' \
+            -d "{\"text\":\"Sorveglianza database: controllo fallito. Dettagli: $RUN_URL\"}" \
+            "$WEBHOOK"

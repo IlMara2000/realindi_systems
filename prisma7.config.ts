@@ -8,6 +8,9 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    // DIRECT_URL, quando c'è, punta all'endpoint diretto: il pooler non
+    // conserva lo stato di sessione che i comandi Migrate richiedono. Il
+    // runtime dell'applicazione resta su DATABASE_URL, che è quella pooled.
+    url: process.env["DIRECT_URL"]?.trim() || process.env["DATABASE_URL"],
   },
 });

@@ -18,11 +18,20 @@ import { Client } from "pg";
 
 const MIGRATIONS = resolve(process.cwd(), "prisma/migrations");
 
+/**
+ * URL usata da Migrate: DIRECT_URL, quando c'è, punta all'endpoint diretto,
+ * perché il pooler in modalità transazionale non conserva lo stato di sessione
+ * che `migrate` richiede. Il runtime dell'applicazione resta invece su
+ * DATABASE_URL, che è quella pooled: le connessioni dirette sono poche.
+ */
+const migrateUrl = process.env.DIRECT_URL?.trim() || process.env.DATABASE_URL;
+
 function prisma(args: string[]): { ok: boolean; output: string } {
   try {
     const output = execFileSync("npx", ["prisma", ...args], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
+      env: migrateUrl ? { ...process.env, DATABASE_URL: migrateUrl } : process.env,
     });
     return { ok: true, output };
   } catch (error) {
@@ -60,8 +69,8 @@ function firstMigration(): string {
 }
 
 async function main(): Promise<void> {
-  const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL non impostata.");
+  const url = migrateUrl;
+  if (!url) throw new Error("Serve DATABASE_URL (oppure DIRECT_URL per l'endpoint diretto).");
 
   const deploy = prisma(["migrate", "deploy"]);
   if (deploy.ok) {

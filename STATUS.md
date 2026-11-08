@@ -35,3 +35,20 @@ Aggiunti l'impostazione `public_url` (origine HTTPS senza percorso, validata lat
 Verifiche: 12 test integrati ancora passati e controllo sintassi frontend superato. Prova reale con archivio temporaneo su porta 8091 e link `trycloudflare.com`: pagina pubblica servita in HTTPS, 18 orari disponibili, prenotazione creata dal pubblico, seconda prenotazione sullo stesso orario rifiutata (400), richiesta da origine esterna rifiutata (403), annullamento con token riuscito, `/api/state` senza login 401, pagina resa nel browser con orari caricati e nessun errore JavaScript. Alla chiusura tunnel, app di prova e indirizzo pubblico sono stati rimossi; il database reale non è stato toccato.
 
 Limite dichiarato: il link è raggiungibile solo con Mac acceso, server e tunnel attivi, e l'indirizzo temporaneo cambia a ogni avvio; per un link stabile serve un tunnel con nome su un dominio proprio o un server sempre attivo.
+
+## Pooler Prisma, endpoint diretto e controllo di salute (8 novembre 2026)
+
+**Diagnosi.** L'endpoint pooled `pooled.db.prisma.io` non è affidabile per i database **appena creati**: la connessione risponde `Failed to connect to upstream database. Please contact Prisma support if the problem persists.` mentre l'endpoint diretto `db.prisma.io` raggiunge lo stesso database senza problemi. Verificato due volte, creando database temporanei: la creazione riesce, la connessione successiva attraverso il pooler no. I database esistenti (`postgres`, `realindi_test`) funzionano su entrambi gli endpoint, e stamattina il pooler è tornato raggiungibile da solo. Il giorno prima il guasto era più ampio e coinvolgeva anche i database esistenti, quindi resta un ticket da aprire a Prisma: le evidenze sono riproducibili con `scripts/diagnose-pooler.mjs`.
+
+**Cosa è cambiato.**
+
+- `DIRECT_URL` opzionale: `prisma7.config.ts` e `scripts/migrate.ts` usano `DIRECT_URL` quando è impostata e altrimenti `DATABASE_URL`; il runtime dell'applicazione resta su `DATABASE_URL` (pooled), perché le connessioni dirette sono limitate dal piano.
+- `db:check` passa dall'endpoint diretto quando `DIRECT_URL` c'è: crea e interroga database temporanei, che attraverso il pooler non sarebbero raggiungibili. Il processo figlio di `prisma migrate deploy` riceve **entrambe** le variabili: senza, il config avrebbe preferito `DIRECT_URL` del `.env` e il deploy del controllo sarebbe finito sul database di produzione. Verificato dopo la correzione che la produzione è intatta (2 migrazioni applicate, 21 tabelle, nessun rollback).
+- `scripts/host-guard.ts` con test: `db:check` rifiuta un host che non sia locale, perché crea e distrugge database; per procedere serve `npm run db:check -- --consenti-remoto`.
+- `/api/health` pubblico: una `SELECT 1` con limite di 2 s, 200 `{"status":"ok"}` oppure 503 `{"status":"degraded"}`, nessun dettaglio nella risposta. È servito **prima** di `ensureDefaults()`, che interroga il database: senza, con il server irraggiungibile la risposta arrivava dopo 77 s invece che dopo 2.
+- `npm run test:locale`: Postgres 17 in container con le stesse URL della CI, così la suite non dipende dal database cloud.
+- `.github/workflows/sorveglianza.yml` e `scripts/diagnose-pooler.mjs`: controllo ogni 30 minuti dell'endpoint di salute e dei due endpoint del database, con notifica.
+
+**Verifiche.** `npx tsc --noEmit` → 0. `vitest run` → 13 file, **137 test**, uscita 0. `/api/health`: 200 in 27 ms con database sano; 503 in 2,005 s con indirizzo che non risponde; `/api/notes` e `/api/clients` ancora 401. `db:check` verde con `DIRECT_URL` (uscita 0, «Migrazioni allineate allo schema.») e rifiutato senza consenso su host remoto (uscita 1). `db:migrate` con `DATABASE_URL` irraggiungibile e `DIRECT_URL` valido: 21 tabelle e 3 migrazioni applicate su un database nuovo, poi eliminato. Nessun database temporaneo residuo.
+
+**Da completare.** Aggiungere `DIRECT_URL` fra le variabili di Vercel; creare su GitHub la variable `PROD_URL` e il secret `DATABASE_URL_TEST` (più `SLACK_WEBHOOK_URL` se serve la notifica); `test:locale` non è stato eseguito perché Docker non è installato su questa macchina; la segnalazione a Prisma va ancora inviata.

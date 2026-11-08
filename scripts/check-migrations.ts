@@ -15,12 +15,32 @@ import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { resolve } from "node:path";
 import { Client } from "pg";
+import { verificaHost } from "./host-guard.js";
 
 const mother = process.env.DATABASE_URL_TEST?.trim() ?? process.env.DATABASE_URL?.trim();
 if (!mother) throw new Error("Serve DATABASE_URL_TEST (con permesso di creare database).");
 
+// Questo script crea e distrugge database: su un'istanza gestita è invasivo,
+// quindi parte solo con un consenso esplicito sulla riga di comando.
+const esitoHost = verificaHost(mother, {
+  consenso: process.argv.includes("--consenti-remoto"),
+  ruolo: "DATABASE_URL_TEST",
+});
+if (!esitoHost.consentito) {
+  console.error(esitoHost.messaggio);
+  process.exit(1);
+}
+if (esitoHost.avviso) console.warn(esitoHost.avviso);
+
+// Un database appena creato non è raggiungibile attraverso il pooler: la
+// mappatura non esiste ancora, e la connessione risponde «Failed to connect to
+// upstream database». Se DIRECT_URL è impostata, ogni connessione di questo
+// controllo passa dall'endpoint diretto: stesse credenziali, stesso server,
+// cambia solo l'host.
+const base = process.env.DIRECT_URL?.trim() || mother;
+
 function urlFor(name: string): string {
-  const url = new URL(mother as string);
+  const url = new URL(base);
   url.pathname = `/${name}`;
   return url.toString();
 }
@@ -37,12 +57,12 @@ async function withClient<T>(url: string, fn: (client: Client) => Promise<T>): P
 }
 
 async function createDatabase(name: string): Promise<string> {
-  await withClient(mother as string, (client) => client.query(`CREATE DATABASE "${name}"`).then(() => undefined));
+  await withClient(base, (client) => client.query(`CREATE DATABASE "${name}"`).then(() => undefined));
   return urlFor(name);
 }
 
 async function dropDatabase(name: string): Promise<void> {
-  await withClient(mother as string, (client) =>
+  await withClient(base, (client) =>
     client.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`).then(() => undefined),
   ).catch((error) => {
     console.error(`Database temporaneo ${name} non eliminato: ${(error as Error)?.message}`);
@@ -54,7 +74,10 @@ function applyMigrations(url: string): void {
   execFileSync("npx", ["prisma", "migrate", "deploy"], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, DATABASE_URL: url },
+    // prisma7.config.ts preferisce DIRECT_URL: va allineata all'URL del
+    // database temporaneo. Senza, il deploy del controllo finirebbe sul
+    // database indicato nel .env — cioè la produzione.
+    env: { ...process.env, DATABASE_URL: url, DIRECT_URL: url },
     timeout: 120_000,
   });
 }
