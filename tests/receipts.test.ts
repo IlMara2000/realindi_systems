@@ -2,7 +2,7 @@
 // importo in lettere. La numerazione la decide il server, non il browser.
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { startServer, type RunningServer } from "../scripts/dev-server.js";
-import { makeClient, resetDb, sql, type TestClient } from "./helpers.js";
+import { makeClient, resetDb, type TestClient } from "./helpers.js";
 import { importoInLettere, inLettere } from "../src/receipts.js";
 
 let server: RunningServer;
@@ -19,7 +19,6 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await resetDb();
-  await sql("TRUNCATE TABLE receipts RESTART IDENTITY CASCADE");
 });
 
 async function fresh(): Promise<TestClient> {
@@ -102,6 +101,55 @@ describe("ricevute di cassa", () => {
     const registro = await c.request("/api/ricevute");
     expect(registro.body.receipts).toHaveLength(8);
     expect(registro.body.counters["2026"]).toBe(8);
+  });
+
+  it("annulla una ricevuta senza cancellarla", async () => {
+    const c = await fresh();
+    const emessa = await c.request("/api/ricevute", ricevuta());
+    const id = emessa.body.receipt.id;
+
+    const res = await c.request("/api/ricevute/annulla", { id, reason: "Importo errato" });
+    expect(res.status).toBe(200);
+    expect(res.body.receipt.cancel_reason).toBe("Importo errato");
+    // Stesso formato di created_at: utcStamp(), senza la T.
+    expect(res.body.receipt.cancelled_at).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+
+    const registro = await c.request("/api/ricevute");
+    expect(registro.body.receipts).toHaveLength(1);
+    expect(registro.body.receipts[0].cancelled_at).toBeTruthy();
+    // Il numero resta occupato: il contatore dell'anno non cala.
+    expect(registro.body.counters["2026"]).toBe(1);
+  });
+
+  it("rifiuta il doppio annullamento e il motivo vuoto", async () => {
+    const c = await fresh();
+    const emessa = await c.request("/api/ricevute", ricevuta());
+    const id = emessa.body.receipt.id;
+
+    const vuoto = await c.request("/api/ricevute/annulla", { id, reason: "   " });
+    expect(vuoto.status).toBe(400);
+    expect(String(vuoto.body.error)).toContain("motivo");
+
+    expect((await c.request("/api/ricevute/annulla", { id, reason: "Errore" })).status).toBe(200);
+    const doppio = await c.request("/api/ricevute/annulla", { id, reason: "Errore" });
+    expect(doppio.status).toBe(400);
+    expect(String(doppio.body.error)).toContain("già annullata");
+  });
+
+  it("non riusa il numero di una ricevuta annullata", async () => {
+    const c = await fresh();
+    const prima = await c.request("/api/ricevute", ricevuta());
+    await c.request("/api/ricevute/annulla", { id: prima.body.receipt.id, reason: "Errore" });
+
+    const dopo = await c.request("/api/ricevute", ricevuta({ payer: "Anna Bianchi" }));
+    expect(dopo.body.receipt.number).toBe(prima.body.receipt.number + 1);
+  });
+
+  it("risponde 404 su una ricevuta inesistente", async () => {
+    const c = await fresh();
+    const res = await c.request("/api/ricevute/annulla", { id: 9999, reason: "Errore" });
+    expect(res.status).toBe(404);
+    expect(String(res.body.error)).toContain("non trovata");
   });
 
   it("rifiuta le ricevute senza i dati essenziali", async () => {

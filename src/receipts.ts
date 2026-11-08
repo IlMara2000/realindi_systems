@@ -6,6 +6,7 @@
 // fila e prendono numeri diversi. Il vincolo univoco (year, number) resta come
 // rete di sicurezza se qualcosa scavalca la transazione.
 import { prisma } from "./db.js";
+import { utcStamp } from "./notes.js";
 import { Invalid, checkDate } from "./util.js";
 
 const UNITA = [
@@ -144,6 +145,32 @@ export async function emitReceipt(fields: ReceiptFields) {
     },
     { timeout: 15000 },
   );
+}
+
+/**
+ * Annulla una ricevuta senza cancellarla: il numero resta occupato, perché
+ * riemetterlo farebbe convivere due documenti con la stessa numerazione.
+ *
+ * L'UPDATE condiziona su cancelled_at null, così due annullamenti simultanei
+ * non si sovrascrivono il motivo: il secondo trova zero righe e riceve
+ * l'errore giusto.
+ */
+export async function cancelReceipt(id: number, reason: string) {
+  const p = prisma();
+  const motivo = testo(reason, 200);
+  if (!motivo) throw new Invalid("Indica il motivo dell'annullamento.");
+
+  const updated = await p.receipt.updateMany({
+    where: { id, cancelled_at: null },
+    data: { cancelled_at: utcStamp(), cancel_reason: motivo },
+  });
+  if (updated.count === 0) {
+    const existing = await p.receipt.findUnique({ where: { id }, select: { id: true } });
+    // Assente: decide il chiamante (404). Presente ma non aggiornata: già annullata.
+    if (!existing) return null;
+    throw new Invalid("Questa ricevuta è già annullata.");
+  }
+  return p.receipt.findUniqueOrThrow({ where: { id } });
 }
 
 /** Registro completo (dal più recente) e ultimo numero usato per ogni anno. */

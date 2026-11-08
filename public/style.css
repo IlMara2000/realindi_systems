@@ -2265,3 +2265,31 @@ dialog::backdrop {
     max-height: none;
   }
 }
+
+/* Avviso dei contatti che hanno esaurito le risposte automatiche.
+   Sta sopra la scheda dell'assistente e sparisce da solo quando il tempo scade. */
+.limiti-avviso {
+  background: var(--paper);
+  border-left: 4px solid var(--lime);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--raised-sm);
+  padding: 14px 18px;
+  margin-bottom: 18px;
+}
+.limiti-avviso[hidden] {
+  display: none;
+}
+.limiti-avviso strong {
+  display: block;
+  margin-bottom: 6px;
+}
+.limiti-avviso ul {
+  margin: 0 0 6px;
+  padding-left: 18px;
+}
+.limiti-avviso li {
+  margin: 2px 0;
+}
+.limiti-avviso small {
+  color: var(--muted);
+}

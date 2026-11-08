@@ -53,7 +53,7 @@ import {
   removeApple,
 } from "./integrations.js";
 import { runSync } from "./sync.js";
-import { emitReceipt, listReceipts, validateReceiptFields } from "./receipts.js";
+import { cancelReceipt, emitReceipt, listReceipts, validateReceiptFields } from "./receipts.js";
 import { sendMail, validateOutgoing, readInbox } from "./email.js";
 import {
   PROVIDERS,
@@ -134,6 +134,7 @@ const MIME: Record<string, string> = {
   "estimate.js": "text/javascript; charset=utf-8",
   "fiscal.js": "text/javascript; charset=utf-8",
   "site.js": "text/javascript; charset=utf-8",
+  "limiti-assistente.js": "text/javascript; charset=utf-8",
   "style.css": "text/css; charset=utf-8",
   "site.css": "text/css; charset=utf-8",
   "assets/logo-realindi.png": "image/png",
@@ -147,6 +148,7 @@ const STATIC_FILES = new Set([
   "/estimate.js",
   "/fiscal.js",
   "/site.js",
+  "/limiti-assistente.js",
   "/style.css",
   "/site.css",
   "/assets/logo-realindi.png",
@@ -1104,6 +1106,12 @@ async function handlePost(req: HandlerRequest): Promise<HandlerResponse> {
   if (path === "/api/ricevute") {
     const emitted = await emitReceipt(validateReceiptFields(d));
     return send({ receipt: emitted });
+  }
+
+  if (path === "/api/ricevute/annulla") {
+    const receipt = await cancelReceipt(intId(d.id), typeof d.reason === "string" ? d.reason : "");
+    if (!receipt) return sendError(404, "Ricevuta non trovata.");
+    return send({ receipt });
   }
 
   if (path === "/api/notes") {

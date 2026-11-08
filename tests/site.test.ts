@@ -69,6 +69,10 @@ describe("routing sito", () => {
     expect(legacy.status).toBe(200);
     const app = await get("/app.js");
     expect(app.status).toBe(200);
+    const avvisi = await get("/limiti-assistente.js");
+    expect(avvisi.status).toBe(200);
+    expect(avvisi.type).toContain("text/javascript");
+    expect(avvisi.text).toContain("mountLimitiAssistente");
   });
 
   it("la home ha le sezioni del sito freelance", async () => {

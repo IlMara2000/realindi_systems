@@ -1024,6 +1024,7 @@ function channelsView() {
   return (
     title("Canali & AI", "Collega WhatsApp, Instagram e SMS e addestra l'assistente sulla tua attività.", btn("Apri inbox", "open-inbox")) +
     `<div class="callout"><strong>Come funziona</strong><br>Collega un canale, incolla l'URL del webhook nel pannello del provider e premi «Aggiorna conoscenza dal sito». Da quel momento l'assistente risponde con le informazioni della tua attività e tu vedi tutto in Messaggi.</div>` +
+    `<div id="limiti-avviso" class="limiti-avviso" role="status" aria-live="polite" hidden></div>` +
     panel("Assistente AI", assistantForm) +
     `<div class="section-gap">${panel("Auto-apprendimento dal sito", knowledgePanel)}</div>` +
     `<div class="section-gap provider-grid">${providers.map(channelCard).join("")}</div>` +
@@ -1115,6 +1116,8 @@ function bindView() {
       }
     };
   });
+  const avvisoLimiti = $("#limiti-avviso");
+  if (avvisoLimiti) window.mountLimitiAssistente?.(avvisoLimiti);
   if ($("#assistant-form"))
     $("#assistant-form").onsubmit = async (e) => {
       e.preventDefault();
