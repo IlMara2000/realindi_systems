@@ -259,6 +259,24 @@
   display: none;
 }
 
+/* Cambio tema animato.
+   La classe la mette il JS solo per il tempo del passaggio (~320ms): così il
+   crossfade c'è quando si preme l'interruttore e non su hover, caricamento o
+   scroll. Il !important scavalca per quel momento le transizioni dei singoli
+   componenti, che altrimenti animerebbero solo una parte delle proprietà. */
+.theme-transition,
+.theme-transition *,
+.theme-transition *::before,
+.theme-transition *::after {
+  transition:
+    background-color 0.28s ease,
+    border-color 0.28s ease,
+    color 0.28s ease,
+    fill 0.28s ease,
+    stroke 0.28s ease,
+    box-shadow 0.28s ease !important;
+}
+
 .light-mode .btn-primary {
   color: var(--ink);
 }

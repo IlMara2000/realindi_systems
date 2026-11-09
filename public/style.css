@@ -428,6 +428,21 @@
 .light-mode .theme-toggle .theme-icon-moon {
   display: none;
 }
+
+/* Cambio tema animato: la classe resta sulla radice solo durante il passaggio,
+   aggiunta dal JS, così il workspace non anima nulla durante l'uso normale. */
+.theme-transition,
+.theme-transition *,
+.theme-transition *::before,
+.theme-transition *::after {
+  transition:
+    background-color 0.28s ease,
+    border-color 0.28s ease,
+    color 0.28s ease,
+    fill 0.28s ease,
+    stroke 0.28s ease,
+    box-shadow 0.28s ease !important;
+}
 * {
   box-sizing: border-box;
 }

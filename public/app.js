@@ -21,6 +21,18 @@ const money = (cents) =>
 (function initThemeToggle() {
   const root = document.documentElement;
   const media = window.matchMedia("(prefers-color-scheme: dark)");
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  let transitionTimer = null;
+
+  function startTransition() {
+    if (reducedMotion.matches) return;
+    root.classList.add("theme-transition");
+    window.clearTimeout(transitionTimer);
+    transitionTimer = window.setTimeout(
+      () => root.classList.remove("theme-transition"),
+      320
+    );
+  }
 
   function applyTheme(theme) {
     root.classList.toggle("dark-mode", theme === "dark");
@@ -36,6 +48,7 @@ const money = (cents) =>
     if (!button) return;
     const next = root.classList.contains("dark-mode") ? "light" : "dark";
     localStorage.setItem("theme", next);
+    startTransition();
     applyTheme(next);
   });
 
