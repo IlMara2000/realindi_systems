@@ -2484,7 +2484,8 @@ dialog::backdrop {
   height: 18px;
   border-radius: 999px;
   background: var(--lime);
-  color: #fff;
+  color: #14141a;
+  font-weight: 700;
   font-size: 11px;
   display: grid;
   place-items: center;

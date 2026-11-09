@@ -935,8 +935,10 @@ img {
 }
 
 .bio-contact {
-  display: inline-flex;
+  display: flex;
+  justify-content: center;
   margin-top: 1rem;
+  margin-inline: auto;
   width: 100%;
   max-width: 300px;
 }
