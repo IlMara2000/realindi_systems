@@ -397,6 +397,92 @@ img {
   margin: 0 0 1.3rem;
 }
 
+/* -------------------------------------------------------------- scorrimento */
+/* Barra sottile e grigia, senza il binario chiaro del sistema: la pagina resta
+   piena fino al bordo e il pollice è l'unico segno visibile. */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: #b6c0cf transparent;
+}
+
+html::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+html::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+html::-webkit-scrollbar-thumb {
+  background-color: #b6c0cf;
+  background-clip: padding-box;
+  border: 3px solid transparent;
+  border-radius: 999px;
+}
+
+html::-webkit-scrollbar-thumb:hover {
+  background-color: #9aa5b6;
+}
+
+html::-webkit-scrollbar-thumb:active {
+  background-color: #8b96a8;
+}
+
+html::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+@media (prefers-color-scheme: dark) {
+  html {
+    scrollbar-color: #4a5262 transparent;
+  }
+
+  html::-webkit-scrollbar-thumb {
+    background-color: #4a5262;
+  }
+
+  html::-webkit-scrollbar-thumb:hover {
+    background-color: #5d6879;
+  }
+
+  html::-webkit-scrollbar-thumb:active {
+    background-color: #6c7a8d;
+  }
+}
+
+.dark-mode {
+  scrollbar-color: #4a5262 transparent;
+}
+
+.dark-mode::-webkit-scrollbar-thumb {
+  background-color: #4a5262;
+}
+
+.dark-mode::-webkit-scrollbar-thumb:hover {
+  background-color: #5d6879;
+}
+
+.dark-mode::-webkit-scrollbar-thumb:active {
+  background-color: #6c7a8d;
+}
+
+.light-mode {
+  scrollbar-color: #b6c0cf transparent;
+}
+
+.light-mode::-webkit-scrollbar-thumb {
+  background-color: #b6c0cf;
+}
+
+.light-mode::-webkit-scrollbar-thumb:hover {
+  background-color: #9aa5b6;
+}
+
+.light-mode::-webkit-scrollbar-thumb:active {
+  background-color: #8b96a8;
+}
+
 /* ----------------------------------------------------------------- pulsanti */
 .btn {
   display: inline-flex;
