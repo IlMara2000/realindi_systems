@@ -1198,6 +1198,9 @@ img {
   .topstrip-brand {
     order: 0;
     min-width: 0;
+    font-size: 0.9rem;
+    letter-spacing: 0.08em;
+    gap: 0.55rem;
   }
 
   .topstrip-brand span {
