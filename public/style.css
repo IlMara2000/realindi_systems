@@ -399,6 +399,35 @@
 .dark-mode .theme-toggle .theme-icon-moon {
   display: block;
 }
+
+/* Scelta manuale del tema chiaro: vince sulla preferenza di sistema scura. */
+.light-mode {
+  --green: #141418;
+  --lime: #ff6a1a;
+  --accent: #55607a;
+
+  --bg: #e9edf4;
+  --paper: #f0f3f9;
+  --ink: #141418;
+  --muted: #5b6473;
+  --line: #d5dce7;
+  --light: #ffffff;
+  --shade: #c3ccdb;
+  --raised: 8px 8px 18px var(--shade), -8px -8px 18px var(--light);
+  --raised-sm: 4px 4px 11px var(--shade), -4px -4px 11px var(--light);
+  --inset: inset 5px 5px 11px var(--shade), inset -5px -5px 11px var(--light);
+  --inset-sm: inset 2px 2px 6px var(--shade), inset -2px -2px 6px var(--light);
+
+  --red: #b03a2e;
+}
+
+.light-mode .theme-toggle .theme-icon-sun {
+  display: block;
+}
+
+.light-mode .theme-toggle .theme-icon-moon {
+  display: none;
+}
 * {
   box-sizing: border-box;
 }

@@ -14,44 +14,34 @@ const money = (cents) =>
     (cents || 0) / 100,
   );
 
-// Theme toggle initialization
+// Theme toggle initialization.
+// Il bottone è nel guscio disegnato da render(), quindi qui si prepara solo il
+// tema sulla radice e si ascolta il click per delega: al caricamento il bottone
+// non esiste ancora.
 (function initThemeToggle() {
-  const toggle = document.getElementById("theme-toggle");
-  if (!toggle) return;
-
-  function getStoredTheme() {
-    return localStorage.getItem("theme");
-  }
-
-  function setStoredTheme(theme) {
-    localStorage.setItem("theme", theme);
-  }
-
-  function getPreferredTheme() {
-    const stored = getStoredTheme();
-    if (stored) return stored;
-    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  }
+  const root = document.documentElement;
+  const media = window.matchMedia("(prefers-color-scheme: dark)");
 
   function applyTheme(theme) {
-    document.documentElement.classList.toggle("dark-mode", theme === "dark");
-    toggle.setAttribute("aria-pressed", theme === "dark");
-    setStoredTheme(theme);
+    root.classList.toggle("dark-mode", theme === "dark");
+    root.classList.toggle("light-mode", theme === "light");
+    const button = document.getElementById("theme-toggle");
+    if (button) button.setAttribute("aria-pressed", theme === "dark" ? "true" : "false");
   }
 
-  // Initialize
-  applyTheme(getPreferredTheme());
+  applyTheme(localStorage.getItem("theme") || (media.matches ? "dark" : "light"));
 
-  // Toggle on click
-  toggle.addEventListener("click", () => {
-    const isDark = document.documentElement.classList.contains("dark-mode");
-    applyTheme(isDark ? "light" : "dark");
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest && event.target.closest("#theme-toggle");
+    if (!button) return;
+    const next = root.classList.contains("dark-mode") ? "light" : "dark";
+    localStorage.setItem("theme", next);
+    applyTheme(next);
   });
 
-  // Listen for system preference changes
-  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
-    if (!getStoredTheme()) {
-      applyTheme(e.matches ? "dark" : "light");
+  media.addEventListener("change", (event) => {
+    if (!localStorage.getItem("theme")) {
+      applyTheme(event.matches ? "dark" : "light");
     }
   });
 })();
@@ -292,7 +282,7 @@ function render() {
   route = location.hash.slice(1) || "dashboard";
   if (!labels[route]) route = "dashboard";
   $("#root").innerHTML =
-    `<div class="shell"><div class="drawer-scrim" data-action="menu-close" aria-hidden="true"></div><button type="button" class="drawer-tab" data-action="menu-open" aria-controls="crm-menu" aria-expanded="false" aria-label="Apri il menu"><span aria-hidden="true">‹</span></button><aside class="sidebar" id="crm-menu"><button type="button" class="drawer-close" data-action="menu-close" aria-label="Chiudi il menu">×</button><a class="brand" href="#dashboard"><img class="brand-mark" src="/assets/logo-realindi.png" alt="" width="32" height="32"> REALINDI</a><div class="brand-sub">FREELANCER WORKSPACE</div><div class="nav-label">WORKSPACE</div><nav class="nav" aria-label="Menu principale">${["dashboard", "messages", "clients", "projects", "quotes", "invoices", "ricevute", "documents", "calendar", "planner", "notes", "channels", "settings"].map((k) => k === "ricevute" ? `<a href="/ricevute">${icon("invoices")}Ricevute</a>` : `<a href="#${k}" class="${route === k ? "active" : ""}" ${route === k ? 'aria-current="page"' : ""}>${icon(k)}${labels[k]}</a>`).join("")}</nav><div class="sidebar-bottom"><div class="nav-label">IL TUO BUSINESS, IN ORDINE.</div><div class="account"><span class="avatar">${esc((state.settings.owner_name || "RS").slice(0, 2).toUpperCase())}</span><div>${esc(state.settings.owner_name || "Il tuo workspace")}<small>Consulente indipendente</small></div></div></div></aside><main class="main"><header class="topbar"><div class="topbar-head"><a class="back-site" href="/">Torna al sito</a><div class="crumb">Workspace <span>/ &nbsp; ${labels[route]}</span></div></div><div class="top-right"><span class="local-status"><i class="status-dot"></i>Archivio locale</span>${btn("Esci", "logout", "", "secondary small")}<button type="button" class="theme-toggle" id="theme-toggle" aria-label="Cambia tema" aria-pressed="false"><svg class="theme-icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg><svg class="theme-icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button><button type="button" class="nav-toggle" data-action="menu-toggle" aria-controls="crm-menu" aria-expanded="false" aria-label="Apri il menu"><span class="nav-toggle-bars" aria-hidden="true"></span></button></div></header><div class="content" id="content"></div></main></div>`;
+    `<div class="shell"><div class="drawer-scrim" data-action="menu-close" aria-hidden="true"></div><button type="button" class="drawer-tab" data-action="menu-open" aria-controls="crm-menu" aria-expanded="false" aria-label="Apri il menu"><span aria-hidden="true">‹</span></button><aside class="sidebar" id="crm-menu"><button type="button" class="drawer-close" data-action="menu-close" aria-label="Chiudi il menu">×</button><a class="brand" href="#dashboard"><img class="brand-mark" src="/assets/logo-realindi.png" alt="" width="32" height="32"> REALINDI</a><div class="brand-sub">FREELANCER WORKSPACE</div><div class="nav-label">WORKSPACE</div><nav class="nav" aria-label="Menu principale">${["dashboard", "messages", "clients", "projects", "quotes", "invoices", "ricevute", "documents", "calendar", "planner", "notes", "channels", "settings"].map((k) => k === "ricevute" ? `<a href="/ricevute">${icon("invoices")}Ricevute</a>` : `<a href="#${k}" class="${route === k ? "active" : ""}" ${route === k ? 'aria-current="page"' : ""}>${icon(k)}${labels[k]}</a>`).join("")}</nav><div class="sidebar-bottom"><div class="nav-label">IL TUO BUSINESS, IN ORDINE.</div><div class="account"><span class="avatar">${esc((state.settings.owner_name || "RS").slice(0, 2).toUpperCase())}</span><div>${esc(state.settings.owner_name || "Il tuo workspace")}<small>Consulente indipendente</small></div></div></div></aside><main class="main"><header class="topbar"><div class="topbar-head"><a class="back-site" href="/">Torna al sito</a><div class="crumb">Workspace <span>/ &nbsp; ${labels[route]}</span></div></div><div class="top-right"><span class="local-status"><i class="status-dot"></i>Archivio locale</span>${btn("Esci", "logout", "", "secondary small")}<button type="button" class="theme-toggle" id="theme-toggle" aria-label="Cambia tema" aria-pressed="${document.documentElement.classList.contains("dark-mode")}"><svg class="theme-icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg><svg class="theme-icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button><button type="button" class="nav-toggle" data-action="menu-toggle" aria-controls="crm-menu" aria-expanded="false" aria-label="Apri il menu"><span class="nav-toggle-bars" aria-hidden="true"></span></button></div></header><div class="content" id="content"></div></main></div>`;
   renderContent();
   if (pendingToast) {
     const t = pendingToast;

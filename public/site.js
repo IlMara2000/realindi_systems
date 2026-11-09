@@ -1,41 +1,31 @@
-// REALINDI SYSTEMS — Theme toggle (dark/light mode)
+// REALINDI SYSTEMS — Theme toggle (chiaro/scuro).
+// Senza scelta salvata segue il sistema; il click salva la preferenza in
+// localStorage e "light-mode"/"dark-mode" vincono sulla media query.
 (function initThemeToggle() {
   const toggle = document.getElementById("theme-toggle");
   if (!toggle) return;
 
-  function getStoredTheme() {
-    return localStorage.getItem("theme");
-  }
-
-  function setStoredTheme(theme) {
-    localStorage.setItem("theme", theme);
-  }
-
-  function getPreferredTheme() {
-    const stored = getStoredTheme();
-    if (stored) return stored;
-    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  }
+  const root = document.documentElement;
+  const media = window.matchMedia("(prefers-color-scheme: dark)");
+  const stored = localStorage.getItem("theme");
 
   function applyTheme(theme) {
-    document.documentElement.classList.toggle("dark-mode", theme === "dark");
-    toggle.setAttribute("aria-pressed", theme === "dark");
-    setStoredTheme(theme);
+    root.classList.toggle("dark-mode", theme === "dark");
+    root.classList.toggle("light-mode", theme === "light");
+    toggle.setAttribute("aria-pressed", theme === "dark" ? "true" : "false");
   }
 
-  // Initialize
-  applyTheme(getPreferredTheme());
+  applyTheme(stored || (media.matches ? "dark" : "light"));
 
-  // Toggle on click
   toggle.addEventListener("click", () => {
-    const isDark = document.documentElement.classList.contains("dark-mode");
-    applyTheme(isDark ? "light" : "dark");
+    const next = root.classList.contains("dark-mode") ? "light" : "dark";
+    localStorage.setItem("theme", next);
+    applyTheme(next);
   });
 
-  // Listen for system preference changes
-  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
-    if (!getStoredTheme()) {
-      applyTheme(e.matches ? "dark" : "light");
+  media.addEventListener("change", (event) => {
+    if (!localStorage.getItem("theme")) {
+      applyTheme(event.matches ? "dark" : "light");
     }
   });
 })();

@@ -124,6 +124,19 @@
   .about-social a:active {
     box-shadow: var(--inset-sm);
   }
+
+  .theme-toggle .theme-icon-sun {
+    display: none;
+  }
+
+  .theme-toggle .theme-icon-moon {
+    display: block;
+  }
+
+  /* Arancione del marchio: testo scuro, il bianco non arriva a 3:1. */
+  .btn-primary {
+    color: #141418;
+  }
 }
 
 /* Override esplicito per chi forza dark mode via classe */
@@ -205,6 +218,62 @@
 
 .dark-mode .theme-toggle .theme-icon-moon {
   display: block;
+}
+
+.dark-mode .btn-primary {
+  color: #141418;
+}
+
+/* Scelta manuale del tema chiaro: vince sulla preferenza di sistema scura. */
+.light-mode {
+  --brand: #141418;
+  --accent: #ff6a1a;
+  --accent-ink: #b4490a;
+  --tertiary: #55607a;
+
+  --surface: #e9edf4;
+  --surface-hi: #f2f5fa;
+  --light: #ffffff;
+  --shade: #c3ccdb;
+  --ink: #141418;
+  --muted: #5b6473;
+  --red: #b03a2e;
+
+  --raised: 9px 9px 20px var(--shade), -9px -9px 20px var(--light);
+  --raised-sm: 5px 5px 12px var(--shade), -5px -5px 12px var(--light);
+  --inset: inset 6px 6px 14px var(--shade), inset -6px -6px 14px var(--light);
+  --inset-sm: inset 3px 3px 7px var(--shade), inset -3px -3px 7px var(--light);
+}
+
+.light-mode body {
+  background: var(--surface);
+  background-image: radial-gradient(circle at 20% 0%, #f3f7fc 0%, rgba(243, 247, 252, 0) 55%),
+    radial-gradient(circle at 85% 15%, #f6f8fc 0%, rgba(246, 248, 252, 0) 45%);
+}
+
+.light-mode .theme-toggle .theme-icon-sun {
+  display: block;
+}
+
+.light-mode .theme-toggle .theme-icon-moon {
+  display: none;
+}
+
+.light-mode .btn-primary {
+  color: var(--ink);
+}
+
+.light-mode .logo-mark,
+.light-mode .bio-logo {
+  background: var(--light);
+}
+
+.light-mode .drawer-tab {
+  box-shadow: -5px 0 14px rgba(20, 20, 24, 0.13);
+}
+
+.light-mode .hero h1 em {
+  background-image: linear-gradient(transparent 62%, rgba(255, 106, 26, 0.3) 62%);
 }
 
 * {
@@ -360,6 +429,41 @@ img {
 .btn-sm {
   padding: 0.55rem 1rem;
   font-size: 0.82rem;
+}
+
+/* Interruttore tema: presente su tutte le pagine, non solo su mobile. */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  background: var(--surface);
+  color: var(--ink);
+  border: 0;
+  border-radius: 12px;
+  box-shadow: var(--raised-sm);
+  cursor: pointer;
+  transition: box-shadow 0.18s ease, transform 0.18s ease, color 0.18s ease;
+}
+
+.theme-toggle:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--raised);
+}
+
+.theme-toggle:active {
+  transform: translateY(0);
+  box-shadow: var(--inset-sm);
+}
+
+.theme-toggle .theme-icon-sun {
+  display: block;
+}
+
+.theme-toggle .theme-icon-moon {
+  display: none;
 }
 
 /* ------------------------------------------------------------- barra superiore */
@@ -1089,53 +1193,21 @@ img {
     padding: calc(0.7rem + env(safe-area-inset-top)) 1rem 0.35rem;
   }
 
+  /* Su mobile restano solo i link della bio e il tema: le sezioni si
+     raggiungono dal pannello laterale. */
   .topstrip-nav {
+    display: flex;
+    gap: 0.4rem;
+  }
+
+  .topstrip-nav a {
     display: none;
   }
 
   .theme-toggle {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 40px;
-    height: 40px;
-    padding: 0;
-    background: var(--surface);
-    color: var(--ink);
-    border: 0;
+    width: 44px;
+    height: 44px;
     border-radius: 15px;
-    box-shadow: var(--raised-sm);
-    cursor: pointer;
-    transition: box-shadow 0.18s ease, transform 0.18s ease;
-  }
-
-  .theme-toggle:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--raised);
-    text-decoration: none;
-  }
-
-  .theme-toggle:active {
-    transform: translateY(0);
-    box-shadow: var(--inset-sm);
-  }
-
-  .theme-toggle .theme-icon-sun {
-    display: block;
-  }
-
-  .theme-toggle .theme-icon-moon {
-    display: none;
-  }
-
-  .dark-mode .theme-toggle .theme-icon-sun,
-  @media (prefers-color-scheme: dark) {
-    .theme-toggle .theme-icon-sun {
-      display: none;
-    }
-    .theme-toggle .theme-icon-moon {
-      display: block;
-    }
   }
 
   .nav-toggle {
