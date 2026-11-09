@@ -37,12 +37,12 @@
   :root {
     --green: #f2f5fa;
     --lime: #ff8c42;
-    --accent: #8aa0c4;
+    --accent: #55607a;
 
     --bg: #16181d;
     --paper: #1e222a;
     --ink: #f2f5fa;
-    --muted: #8aa0c4;
+    --muted: #b9bec8;
     --line: #2a2f3a;
     --light: #1e222a;
     --shade: #0d0f12;
@@ -217,12 +217,12 @@
 .dark-mode {
   --green: #f2f5fa;
   --lime: #ff8c42;
-  --accent: #8aa0c4;
+  --accent: #55607a;
 
   --bg: #16181d;
   --paper: #1e222a;
   --ink: #f2f5fa;
-  --muted: #8aa0c4;
+  --muted: #b9bec8;
   --line: #2a2f3a;
   --light: #1e222a;
   --shade: #0d0f12;
