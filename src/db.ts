@@ -29,8 +29,8 @@ export const DEFAULTS: Record<string, unknown> = {
   booking_notice: 24, booking_horizon: 30, public_url: "",
   assistant_enabled: false, assistant_name: "", assistant_tone: "professionale",
   assistant_language: "auto", assistant_signature: "", assistant_notes: "",
-  assistant_site_url: "", assistant_model: "gpt-4o-mini",
-  assistant_base_url: "https://api.openai.com/v1", assistant_max_chars: 700,
+  assistant_site_url: "", assistant_model: "deepseek-v4.1-flash",
+  assistant_base_url: "https://freebuff.com/api/v1/paid", assistant_max_chars: 700,
   assistant_handoff_email: "",
   ...fiscal.PROFILE_DEFAULTS,
 };

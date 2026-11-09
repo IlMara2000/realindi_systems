@@ -32,8 +32,12 @@ export interface KnowledgeSummary {
   updated_at: string;
 }
 
-const DEFAULT_BASE_URL = "https://api.openai.com/v1";
-const DEFAULT_MODEL = "gpt-4o-mini";
+// La Developer API di Freebuff è OpenAI-compatibile e il suo elenco modelli è
+// pubblico: GET https://freebuff.com/api/v1/paid/models.
+export const DEFAULT_BASE_URL = "https://freebuff.com/api/v1/paid";
+// Fascia di costo bassa, multilingua solido, senza il tempo di ragionamento
+// dei modelli "thinking": adatto a risposte brevi entro il timeout di 12 s.
+export const DEFAULT_MODEL = "deepseek-v4.1-flash";
 const MAX_PAGES = 8;
 const MAX_PAGE_CHARS = 6000;
 
@@ -61,16 +65,22 @@ function integer(value: unknown, fallback: number, min: number, max: number): nu
   return Number.isInteger(n) && n >= min && n <= max ? n : fallback;
 }
 
-async function aiKey(): Promise<string | null> {
+/** Chiave salvata nel database (cifrata), senza ricadere sulle variabili. */
+export async function storedAiKey(): Promise<string | null> {
   const row = await prisma().setting.findUnique({ where: { key: "int_ai" } });
-  if (row) {
-    try {
-      const parsed = JSON.parse(openSecret(row.value)) as { api_key?: unknown };
-      if (typeof parsed.api_key === "string" && parsed.api_key) return parsed.api_key;
-    } catch {
-      // chiave illeggibile: si ricade sulle variabili d'ambiente
-    }
+  if (!row) return null;
+  try {
+    const parsed = JSON.parse(openSecret(row.value)) as { api_key?: unknown };
+    if (typeof parsed.api_key === "string" && parsed.api_key) return parsed.api_key;
+  } catch {
+    // chiave illeggibile (o INTEGRATIONS_KEY cambiata): si ricade sull'ambiente
   }
+  return null;
+}
+
+export async function aiKey(): Promise<string | null> {
+  const stored = await storedAiKey();
+  if (stored) return stored;
   const envKey = process.env.AI_API_KEY || process.env.OPENAI_API_KEY;
   return envKey && envKey.trim() ? envKey.trim() : null;
 }
@@ -85,8 +95,14 @@ export async function assistantSettings(): Promise<AssistantSettings> {
     signature: text(s.assistant_signature, 200),
     notes: text(s.assistant_notes, 8000),
     site_url: text(s.assistant_site_url, 500),
-    model: text(s.assistant_model, 100) || DEFAULT_MODEL,
-    base_url: (text(s.assistant_base_url, 500) || DEFAULT_BASE_URL).replace(/\/+$/, ""),
+    // Le variabili d'ambiente, se impostate, scavalcano i valori salvati
+    // dall'interfaccia: su Vercel sono il modo comodo per configurare l'AI.
+    model: text(process.env.AI_MODEL, 100) || text(s.assistant_model, 100) || DEFAULT_MODEL,
+    base_url: (
+      text(process.env.AI_BASE_URL, 500) ||
+      text(s.assistant_base_url, 500) ||
+      DEFAULT_BASE_URL
+    ).replace(/\/+$/, ""),
     max_chars: integer(s.assistant_max_chars, MAX_CHARS_DEFAULT, MAX_CHARS_MIN, MAX_CHARS_MAX),
     handoff_email: text(s.assistant_handoff_email, 200),
     trained_at: text(s.assistant_trained_at, 40),
