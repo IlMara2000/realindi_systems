@@ -15,6 +15,16 @@ const money = (cents) =>
   );
 
 // Theme toggle initialization.
+// Controllo del tema condiviso con le viste: la pagina di accesso lo applica in
+// modo "transitorio" (segue il sistema e non memorizza il clic), il workspace
+// invece ripristina la preferenza salvata.
+const themeControl = {
+  transient: false,
+  apply() {},
+  useSystem() {},
+  restore() {},
+};
+
 // Il bottone è nel guscio disegnato da render(), quindi qui si prepara solo il
 // tema sulla radice e si ascolta il click per delega: al caricamento il bottone
 // non esiste ancora.
@@ -41,13 +51,20 @@ const money = (cents) =>
     if (button) button.setAttribute("aria-pressed", theme === "dark" ? "true" : "false");
   }
 
-  applyTheme(localStorage.getItem("theme") || (media.matches ? "dark" : "light"));
+  themeControl.apply = applyTheme;
+  themeControl.useSystem = () => applyTheme(media.matches ? "dark" : "light");
+  themeControl.restore = () =>
+    applyTheme(localStorage.getItem("theme") || (media.matches ? "dark" : "light"));
+
+  themeControl.restore();
 
   document.addEventListener("click", (event) => {
     const button = event.target.closest && event.target.closest("#theme-toggle");
     if (!button) return;
     const next = root.classList.contains("dark-mode") ? "light" : "dark";
-    localStorage.setItem("theme", next);
+    // Sul login la scelta vale per la visita: niente localStorage, così la
+    // pagina continua a seguire il sistema al prossimo accesso.
+    if (!themeControl.transient) localStorage.setItem("theme", next);
     startTransition();
     applyTheme(next);
   });
@@ -247,6 +264,8 @@ async function saved(message) {
   toast(message);
 }
 function auth(setup) {
+  themeControl.transient = true;
+  themeControl.useSystem();
   $("#root").innerHTML =
     `<div class="auth-page"><button type="button" class="theme-toggle auth-theme" id="theme-toggle" aria-label="Cambia tema" aria-pressed="${document.documentElement.classList.contains("dark-mode")}"><svg class="theme-icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg><svg class="theme-icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button><section class="auth-story"><div class="brand"><img class="brand-mark" src="/assets/logo-realindi.png" alt="" width="32" height="32"> REALINDI</div><div><div class="eyebrow">Un solo posto. Tutto il tuo lavoro.</div><h1>Più spazio ai progetti.<br>Meno alla burocrazia.</h1><p>Clienti, proposte, documenti e appuntamenti. Il workspace pensato per il tuo lavoro indipendente.</p></div><small>REALINDI SYSTEMS · Freelancer workspace</small></section><section class="auth-form"><div class="brand"><img class="brand-mark" src="/assets/logo-realindi.png" alt="" width="32" height="32"> REALINDI</div><div class="eyebrow">Il tuo nuovo punto di partenza</div><h1>${setup ? "Crea il tuo workspace" : "Bentornato nel workspace"}</h1><p class="subtitle">${setup ? "Scegli la password per proteggere clienti e documenti." : "Accedi per riprendere da dove avevi lasciato."}</p><form id="auth-form">${field("Password", "password", "password", "", 'required minlength="12" maxlength="256" autocomplete="' + (setup ? "new-password" : "current-password") + '"')}${setup ? field("Ripeti password", "confirm", "password", "", 'required minlength="12" autocomplete="new-password"') : ""}<div class="error" role="alert"></div><button class="primary" type="submit">${setup ? "Crea workspace" : "Accedi al workspace"} →</button><p class="hint">${setup ? "Almeno 12 caratteri. I dati vengono conservati nella cartella locale del progetto." : "Sessione privata · accesso protetto"}</p></form></section></div>`;
   $("#auth-form").onsubmit = async (e) => {
@@ -293,6 +312,8 @@ function render() {
   // Ogni render ricostruisce il guscio: il pannello torna chiuso.
   document.body.classList.remove("drawer-open");
   route = location.hash.slice(1) || "dashboard";
+  themeControl.transient = false;
+  themeControl.restore();
   if (!labels[route]) route = "dashboard";
   $("#root").innerHTML =
     `<div class="shell"><div class="drawer-scrim" data-action="menu-close" aria-hidden="true"></div><button type="button" class="drawer-tab" data-action="menu-open" aria-controls="crm-menu" aria-expanded="false" aria-label="Apri il menu"><span aria-hidden="true">‹</span></button><aside class="sidebar" id="crm-menu"><button type="button" class="drawer-close" data-action="menu-close" aria-label="Chiudi il menu">×</button><a class="brand" href="#dashboard"><img class="brand-mark" src="/assets/logo-realindi.png" alt="" width="32" height="32"> REALINDI</a><div class="brand-sub">FREELANCER WORKSPACE</div><div class="nav-label">WORKSPACE</div><nav class="nav" aria-label="Menu principale">${["dashboard", "messages", "clients", "projects", "quotes", "invoices", "ricevute", "documents", "calendar", "planner", "notes", "channels", "settings"].map((k) => k === "ricevute" ? `<a href="/ricevute">${icon("invoices")}Ricevute</a>` : `<a href="#${k}" class="${route === k ? "active" : ""}" ${route === k ? 'aria-current="page"' : ""}>${icon(k)}${labels[k]}</a>`).join("")}</nav><div class="sidebar-bottom"><div class="nav-label">IL TUO BUSINESS, IN ORDINE.</div><div class="account"><span class="avatar">${esc((state.settings.owner_name || "RS").slice(0, 2).toUpperCase())}</span><div>${esc(state.settings.owner_name || "Il tuo workspace")}<small>Consulente indipendente</small></div></div></div></aside><main class="main"><header class="topbar"><div class="topbar-head"><a class="back-site" href="/">Torna al sito</a><div class="crumb">Workspace <span>/ &nbsp; ${labels[route]}</span></div></div><div class="top-right"><span class="local-status"><i class="status-dot"></i>Archivio locale</span>${btn("Esci", "logout", "", "secondary small")}<button type="button" class="theme-toggle" id="theme-toggle" aria-label="Cambia tema" aria-pressed="${document.documentElement.classList.contains("dark-mode")}"><svg class="theme-icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg><svg class="theme-icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button><button type="button" class="nav-toggle" data-action="menu-toggle" aria-controls="crm-menu" aria-expanded="false" aria-label="Apri il menu"><span class="nav-toggle-bars" aria-hidden="true"></span></button></div></header><div class="content" id="content"></div></main></div>`;
