@@ -69,7 +69,11 @@ In Twilio → Numbers → Messaging incolla l'URL del webhook in *A message come
 
 #### Provider AI
 
-L'assistente chiama un endpoint **OpenAI-compatibile** (`/chat/completions`), quindi va bene OpenAI, Z.ai o qualsiasi gateway compatibile. In *Canali & AI → Assistente* puoi incollare nome modello, base URL e chiave API: la chiave viene cifrata nel database. In alternativa imposta `AI_API_KEY`, `AI_BASE_URL` e `AI_MODEL` nelle variabili d'ambiente (utile su Vercel). La chiave non viene mai inviata al browser né scritta nei log.
+L'assistente chiama un endpoint **OpenAI-compatibile** (`/chat/completions`). Il default è la **Developer API di Freebuff**, `https://freebuff.com/api/v1/paid`: la chiave si crea da Account → Developer API su [freebuff.com/account/api](https://freebuff.com/account/api) e i modelli disponibili sono elencati da `GET https://freebuff.com/api/v1/paid/models`. Il default è `deepseek-v4.1-flash`: fascia di costo bassa, buon multilingua e nessun tempo di ragionamento, quindi risposte brevi entro il timeout di 12 secondi. Alternative: `glm-5.3-flash` (circa la metà del costo, ma con ragionamento), `gpt-6-luna` (più caro, qualità GPT) e `gemini-3.8-flash` (solo piani paid). Va bene comunque qualsiasi altro gateway compatibile, come OpenAI o Z.ai: in *Canali & AI → Assistente* puoi incollare nome modello, base URL e chiave API, che viene cifrata nel database.
+
+Per verificare chiave ed endpoint senza aprire il CRM: `npm run diagnose:ai` invia un messaggio minimo e stampa provider, modello, latenza e l'eventuale errore del provider; un messaggio personalizzato si passa come argomento (`npm run diagnose:ai -- "Ciao, fate siti?"`). La chiave viene usata ma mai stampata — si vedono solo provenienza (database o variabile d'ambiente) e lunghezza — e il testo restituito dal provider passa da una redazione, perché un errore può ripeterla. Uscita 0 risposta ricevuta, 1 provider in errore o irraggiungibile, 2 chiave assente. Se il database non risponde il comando usa le sole variabili d'ambiente, utile per capire se il guasto è l'AI o la connessione al database.
+
+In alternativa imposta `AI_API_KEY`, `AI_BASE_URL` e `AI_MODEL` nelle variabili d'ambiente: è la via comoda su Vercel, dove il database non contiene la chiave. Se presenti, `AI_BASE_URL` e `AI_MODEL` hanno la precedenza sui valori salvati dall'interfaccia; per la chiave invece vale prima quella salvata nell'app e poi `AI_API_KEY` (o `OPENAI_API_KEY`). La chiave non viene mai inviata al browser né scritta nei log.
 
 #### Come istruire l'assistente
 
@@ -94,6 +98,7 @@ L'auto-risposta si attiva solo con tre condizioni: interruttore globale in *Assi
 ```sh
 npm test          # suite Vitest (applica le migrazioni al database della run)
 npx tsc --noEmit  # controllo tipi
+npm run diagnose:ai # messaggio di prova alla Developer API: provider, modello, latenza, errore
 npm run db:check  # migrazioni ancora allineate a schema.prisma
 npm run build     # generate + migrazioni + tsc
 ```

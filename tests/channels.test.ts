@@ -8,6 +8,11 @@ import { MAX_REPLIES } from "../src/ratelimit.js";
 // Le credenziali dei canali sono cifrate: la suite usa una chiave dedicata.
 process.env.INTEGRATIONS_KEY ??= "test-integrations-key-per-i-canali-0123456789";
 
+// AI_BASE_URL e AI_MODEL dall'ambiente scavalcherebbero quelli salvati dai
+// test: si azzerano per isolare l'esecuzione da un .env reale.
+delete process.env.AI_BASE_URL;
+delete process.env.AI_MODEL;
+
 let server: RunningServer;
 let base: string;
 
