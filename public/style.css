@@ -328,6 +328,24 @@
   box-shadow: var(--raised-sm);
 }
 
+/* Testi che la skin colora con valori fissi: su fondo scuro sparivano.
+   Il callout restava a 2.4:1 e le pill "inviata/emessa" a 2.2:1 perché
+   --accent diventa chiaro mentre il chip resta pastello. */
+.dark-mode .callout {
+  color: var(--muted);
+}
+
+.dark-mode .pill.sent,
+.dark-mode .pill.issued,
+.dark-mode .pill.discovery {
+  color: #33415c;
+}
+
+/* La barra dell'ultimo mese era quasi nera sul pannello scuro. */
+.dark-mode .chart-col:last-child .bar {
+  background: var(--lime);
+}
+
 .dark-mode .day-cell {
   background: var(--paper);
   box-shadow: var(--raised-sm);
