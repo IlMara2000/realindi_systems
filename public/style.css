@@ -64,7 +64,7 @@
   }
 
   .brand-mark {
-    background: var(--light);
+    background: #ffffff;
     box-shadow: var(--raised-sm);
   }
 
@@ -243,8 +243,9 @@
   box-shadow: -12px 0 24px var(--shade);
 }
 
+/* Il quadratino del marchio resta bianco anche in tema scuro. */
 .dark-mode .brand-mark {
-  background: var(--light);
+  background: #ffffff;
   box-shadow: var(--raised-sm);
 }
 
@@ -2030,7 +2031,7 @@ dialog::backdrop {
   }
 
   .brand-mark {
-    background: var(--light);
+    background: #ffffff;
     padding: 3px;
     border-radius: 10px;
     box-shadow: var(--raised-sm);

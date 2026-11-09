@@ -73,7 +73,7 @@
   }
 
   .logo-mark {
-    background: var(--light);
+    background: #ffffff;
   }
 
   .btn-primary:hover {
@@ -93,7 +93,7 @@
   }
 
   .bio-logo {
-    background: var(--light);
+    background: #ffffff;
   }
 
   .drawer-tab {
@@ -166,9 +166,11 @@
     radial-gradient(circle at 85% 15%, #1e222a 0%, rgba(30, 34, 42, 0) 45%);
 }
 
+/* Il quadratino del marchio resta bianco in entrambi i temi: il file ha il
+   fondo bianco, quindi in scuro deve continuare a leggersi come un timbro. */
 .dark-mode .logo-mark,
 .dark-mode .bio-logo {
-  background: var(--light);
+  background: #ffffff;
 }
 
 .dark-mode .btn-primary:hover {
@@ -283,7 +285,7 @@
 
 .light-mode .logo-mark,
 .light-mode .bio-logo {
-  background: var(--light);
+  background: #ffffff;
 }
 
 .light-mode .drawer-tab {
@@ -514,7 +516,7 @@ img {
   height: 40px;
   flex: none;
   object-fit: contain;
-  background: var(--light);
+  background: #ffffff;
   border-radius: 12px;
   padding: 3px;
   box-shadow: var(--raised-sm);
@@ -849,7 +851,7 @@ img {
   height: 96px;
   margin: 0 auto 1.2rem;
   object-fit: contain;
-  background: var(--light);
+  background: #ffffff;
   border-radius: 24px;
   padding: 8px;
   box-shadow: var(--raised-sm);
