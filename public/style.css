@@ -1189,10 +1189,10 @@ textarea {
   margin-bottom: 17px;
 }
 /* -------------------------------------------------------------- scorrimento */
-/* Stessa barra del sito: sottile, grigia, senza binario chiaro. */
+/* Stessa barra del sito: sottile, nel colore del marchio, senza binario chiaro. */
 html {
   scrollbar-width: thin;
-  scrollbar-color: #b6c0cf transparent;
+  scrollbar-color: #ff6a1a transparent;
 }
 
 html::-webkit-scrollbar {
@@ -1205,18 +1205,18 @@ html::-webkit-scrollbar-track {
 }
 
 html::-webkit-scrollbar-thumb {
-  background-color: #b6c0cf;
+  background-color: #ff6a1a;
   background-clip: padding-box;
   border: 3px solid transparent;
   border-radius: 999px;
 }
 
 html::-webkit-scrollbar-thumb:hover {
-  background-color: #9aa5b6;
+  background-color: #e8580f;
 }
 
 html::-webkit-scrollbar-thumb:active {
-  background-color: #8b96a8;
+  background-color: #cf4d0b;
 }
 
 html::-webkit-scrollbar-corner {
@@ -1225,52 +1225,52 @@ html::-webkit-scrollbar-corner {
 
 @media (prefers-color-scheme: dark) {
   html {
-    scrollbar-color: #4a5262 transparent;
+    scrollbar-color: #ff8c42 transparent;
   }
 
   html::-webkit-scrollbar-thumb {
-    background-color: #4a5262;
+    background-color: #ff8c42;
   }
 
   html::-webkit-scrollbar-thumb:hover {
-    background-color: #5d6879;
+    background-color: #ffa163;
   }
 
   html::-webkit-scrollbar-thumb:active {
-    background-color: #6c7a8d;
+    background-color: #ffb37e;
   }
 }
 
 .dark-mode {
-  scrollbar-color: #4a5262 transparent;
+  scrollbar-color: #ff8c42 transparent;
 }
 
 .dark-mode::-webkit-scrollbar-thumb {
-  background-color: #4a5262;
+  background-color: #ff8c42;
 }
 
 .dark-mode::-webkit-scrollbar-thumb:hover {
-  background-color: #5d6879;
+  background-color: #ffa163;
 }
 
 .dark-mode::-webkit-scrollbar-thumb:active {
-  background-color: #6c7a8d;
+  background-color: #ffb37e;
 }
 
 .light-mode {
-  scrollbar-color: #b6c0cf transparent;
+  scrollbar-color: #ff6a1a transparent;
 }
 
 .light-mode::-webkit-scrollbar-thumb {
-  background-color: #b6c0cf;
+  background-color: #ff6a1a;
 }
 
 .light-mode::-webkit-scrollbar-thumb:hover {
-  background-color: #9aa5b6;
+  background-color: #e8580f;
 }
 
 .light-mode::-webkit-scrollbar-thumb:active {
-  background-color: #8b96a8;
+  background-color: #cf4d0b;
 }
 
 .auth-page {
