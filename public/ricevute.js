@@ -329,6 +329,9 @@
   const bottoneAnnullaDialogo = document.getElementById("rc-annulla-cancella");
   let attuale = null;
 
+  // Assicura che il dialogo sia chiuso all'avvio (l'attributo HTML hidden non basta se la pagina viene ricaricata con stato)
+  dialogo.hidden = true;
+
   function apriDialogoAnnullamento(ricevuta) {
     attuale = ricevuta;
     titoloDialogo.textContent = "Annulla la ricevuta " + ricevuta.numero + " — " + (ricevuta.versante || "senza versante");
@@ -344,6 +347,16 @@
   }
 
   bottoneAnnullaDialogo.addEventListener("click", chiudiDialogo);
+
+  // Chiude cliccando sullo sfondo (backdrop)
+  dialogo.addEventListener("click", function (e) {
+    if (e.target === dialogo) chiudiDialogo();
+  });
+
+  // Chiude con Escape
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && !dialogo.hidden) chiudiDialogo();
+  });
 
   bottoneConferma.addEventListener("click", async function () {
     if (!attuale || occupato) return;
