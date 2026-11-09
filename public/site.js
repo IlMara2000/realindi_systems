@@ -1,9 +1,11 @@
 // REALINDI SYSTEMS — Theme toggle (chiaro/scuro).
 // Senza scelta salvata segue il sistema; il click salva la preferenza in
 // localStorage e "light-mode"/"dark-mode" vincono sulla media query.
+// Ogni .theme-toggle della pagina comanda lo stesso tema: in testata e, su
+// mobile, nel pannello laterale.
 (function initThemeToggle() {
-  const toggle = document.getElementById("theme-toggle");
-  if (!toggle) return;
+  const toggles = Array.from(document.querySelectorAll(".theme-toggle"));
+  if (toggles.length === 0) return;
 
   const root = document.documentElement;
   const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -12,16 +14,20 @@
   function applyTheme(theme) {
     root.classList.toggle("dark-mode", theme === "dark");
     root.classList.toggle("light-mode", theme === "light");
-    toggle.setAttribute("aria-pressed", theme === "dark" ? "true" : "false");
+    toggles.forEach((button) =>
+      button.setAttribute("aria-pressed", theme === "dark" ? "true" : "false")
+    );
   }
 
   applyTheme(stored || (media.matches ? "dark" : "light"));
 
-  toggle.addEventListener("click", () => {
-    const next = root.classList.contains("dark-mode") ? "light" : "dark";
-    localStorage.setItem("theme", next);
-    applyTheme(next);
-  });
+  toggles.forEach((button) =>
+    button.addEventListener("click", () => {
+      const next = root.classList.contains("dark-mode") ? "light" : "dark";
+      localStorage.setItem("theme", next);
+      applyTheme(next);
+    })
+  );
 
   media.addEventListener("change", (event) => {
     if (!localStorage.getItem("theme")) {

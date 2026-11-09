@@ -1443,6 +1443,18 @@ img {
     justify-content: center;
   }
 
+  /* Interruttore tema nel pannello: riga larga con icona e testo, così si
+     riconosce senza doverlo cercare nella testata. */
+  .drawer-theme {
+    width: 100%;
+    height: auto;
+    gap: 0.55rem;
+    padding: 0.8rem 1rem;
+    border-radius: var(--radius-pill);
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+
   .drawer-note {
     margin: 0;
     font-family: var(--font-mono);
