@@ -1191,6 +1191,19 @@ img {
 
   .topstrip {
     padding: calc(0.7rem + env(safe-area-inset-top)) 1rem 0.35rem;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+  }
+
+  .topstrip-brand {
+    order: 0;
+    min-width: 0;
+  }
+
+  .topstrip-brand span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   /* Su mobile restano solo i link della bio e il tema: le sezioni si
@@ -1198,6 +1211,7 @@ img {
   .topstrip-nav {
     display: flex;
     gap: 0.4rem;
+    order: 1;
   }
 
   .topstrip-nav a {
@@ -1225,6 +1239,7 @@ img {
     box-shadow: var(--raised-sm);
     cursor: pointer;
     transition: box-shadow 0.18s ease;
+    order: 2;
   }
 
   .nav-toggle:active {
