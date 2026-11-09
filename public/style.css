@@ -1189,6 +1189,7 @@ textarea {
   margin-bottom: 17px;
 }
 .auth-page {
+  position: relative;
   min-height: 100vh;
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1236,6 +1237,20 @@ textarea {
 }
 .auth-form .brand {
   display: none;
+}
+/* Il toggle del tema è anche sulla pagina di accesso, in alto a destra:
+   l'angolo è libero perché il marchio sta a sinistra. */
+.auth-theme {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  z-index: 5;
+}
+@media (max-width: 850px) {
+  .auth-theme {
+    top: 14px;
+    right: 14px;
+  }
 }
 dialog {
   border: 1px solid var(--line);
