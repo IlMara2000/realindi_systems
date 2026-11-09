@@ -1,3 +1,45 @@
+// REALINDI SYSTEMS — Theme toggle (dark/light mode)
+(function initThemeToggle() {
+  const toggle = document.getElementById("theme-toggle");
+  if (!toggle) return;
+
+  function getStoredTheme() {
+    return localStorage.getItem("theme");
+  }
+
+  function setStoredTheme(theme) {
+    localStorage.setItem("theme", theme);
+  }
+
+  function getPreferredTheme() {
+    const stored = getStoredTheme();
+    if (stored) return stored;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+
+  function applyTheme(theme) {
+    document.documentElement.classList.toggle("dark-mode", theme === "dark");
+    toggle.setAttribute("aria-pressed", theme === "dark");
+    setStoredTheme(theme);
+  }
+
+  // Initialize
+  applyTheme(getPreferredTheme());
+
+  // Toggle on click
+  toggle.addEventListener("click", () => {
+    const isDark = document.documentElement.classList.contains("dark-mode");
+    applyTheme(isDark ? "light" : "dark");
+  });
+
+  // Listen for system preference changes
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
+    if (!getStoredTheme()) {
+      applyTheme(e.matches ? "dark" : "light");
+    }
+  });
+})();
+
 // REALINDI SYSTEMS — menu laterale mobile (hamburger in testata + linguetta
 // sul bordo destro). Il pannello esiste solo sotto gli 820px: da lì in su il
 // click non lo aprirebbe, quindi lo stato viene azzerato al cambio di misura.

@@ -31,6 +31,374 @@
   background: var(--bg);
   font-synthesis: none;
 }
+
+/* ============================================================ DARK MODE */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --green: #f2f5fa;
+    --lime: #ff8c42;
+    --accent: #8aa0c4;
+
+    --bg: #16181d;
+    --paper: #1e222a;
+    --ink: #f2f5fa;
+    --muted: #8aa0c4;
+    --line: #2a2f3a;
+    --light: #1e222a;
+    --shade: #0d0f12;
+    --raised: 8px 8px 18px var(--shade), -8px -8px 18px rgba(30, 34, 42, 0.5);
+    --raised-sm: 4px 4px 11px var(--shade), -4px -4px 11px rgba(30, 34, 42, 0.5);
+    --inset: inset 5px 5px 11px var(--shade), inset -5px -5px 11px rgba(30, 34, 42, 0.5);
+    --inset-sm: inset 2px 2px 6px var(--shade), inset -2px -2px 6px rgba(30, 34, 42, 0.5);
+
+    --red: #e06c75;
+  }
+
+  body {
+    background: var(--bg);
+  }
+
+  .sidebar {
+    background: var(--bg);
+    box-shadow: -12px 0 24px var(--shade);
+  }
+
+  .brand-mark {
+    background: var(--light);
+    box-shadow: var(--raised-sm);
+  }
+
+  .metric.featured {
+    background: var(--paper);
+    box-shadow: var(--raised), inset 0 0 0 2px rgba(255, 140, 66, 0.35);
+  }
+
+  .note-card.pinned {
+    background: var(--paper);
+    box-shadow: var(--raised), inset 0 0 0 2px rgba(255, 140, 66, 0.4);
+  }
+
+  input,
+  select,
+  textarea {
+    background: #1a1e26;
+    box-shadow: inset 4px 4px 9px #0d0f12, inset -4px -4px 9px rgba(30, 34, 42, 0.5);
+  }
+
+  input:focus,
+  select:focus,
+  textarea:focus {
+    outline: 2px solid var(--lime);
+    outline-offset: 1px;
+  }
+
+  button.primary,
+  .button {
+    background: var(--ink);
+    color: var(--bg);
+    box-shadow: var(--raised-sm);
+  }
+
+  button.primary:hover,
+  .button:hover {
+    box-shadow: var(--raised);
+  }
+
+  button.primary:active,
+  .button:active {
+    box-shadow: var(--inset-sm);
+  }
+
+  .secondary {
+    background: var(--bg);
+    color: var(--ink);
+    box-shadow: var(--raised-sm);
+  }
+
+  .secondary:hover {
+    box-shadow: var(--raised);
+  }
+
+  .modal-close,
+  .month-nav {
+    background: var(--bg);
+    box-shadow: var(--raised-sm);
+  }
+
+  .remove-line {
+    background: var(--bg);
+    color: var(--red);
+    box-shadow: var(--raised-sm);
+  }
+
+  .provider-chip {
+    background: var(--bg);
+    box-shadow: var(--raised-sm);
+  }
+
+  .provider-chip.on {
+    background: var(--lime);
+    color: var(--bg);
+    box-shadow: var(--raised-sm);
+  }
+
+  .provider-chip.warn {
+    background: #3d2a1a;
+    color: #ffb06e;
+    box-shadow: var(--raised-sm);
+  }
+
+  .day-cell {
+    background: var(--paper);
+    box-shadow: var(--raised-sm);
+  }
+
+  .day-cell.other {
+    background: var(--bg);
+    box-shadow: none;
+  }
+
+  .day-cell:hover {
+    background: var(--paper);
+    box-shadow: var(--raised);
+  }
+
+  .day-cell.selected {
+    background: var(--bg);
+    box-shadow: var(--inset);
+  }
+
+  .day-cell.today .day-num {
+    background: var(--lime);
+    color: var(--bg);
+  }
+
+  .event-chip {
+    background: #3d2a1a;
+    color: #ffb06e;
+    border-radius: var(--radius-pill);
+  }
+
+  .booking-info {
+    background: var(--bg);
+    box-shadow: var(--inset);
+  }
+
+  .slot {
+    background: var(--bg);
+    box-shadow: var(--raised-sm);
+    color: var(--ink);
+  }
+
+  .slot.selected {
+    background: var(--bg);
+    color: var(--ink);
+    box-shadow: var(--inset);
+  }
+
+  #toast {
+    background: var(--ink);
+    color: var(--bg);
+    box-shadow: 8px 8px 20px rgba(0, 0, 0, 0.3);
+  }
+
+  dialog::backdrop {
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: 3px;
+  }
+}
+
+/* Override esplicito per chi forza dark mode via classe */
+.dark-mode {
+  --green: #f2f5fa;
+  --lime: #ff8c42;
+  --accent: #8aa0c4;
+
+  --bg: #16181d;
+  --paper: #1e222a;
+  --ink: #f2f5fa;
+  --muted: #8aa0c4;
+  --line: #2a2f3a;
+  --light: #1e222a;
+  --shade: #0d0f12;
+  --raised: 8px 8px 18px var(--shade), -8px -8px 18px rgba(30, 34, 42, 0.5);
+  --raised-sm: 4px 4px 11px var(--shade), -4px -4px 11px rgba(30, 34, 42, 0.5);
+  --inset: inset 5px 5px 11px var(--shade), inset -5px -5px 11px rgba(30, 34, 42, 0.5);
+  --inset-sm: inset 2px 2px 6px var(--shade), inset -2px -2px 6px rgba(30, 34, 42, 0.5);
+
+  --red: #e06c75;
+}
+
+.dark-mode body {
+  background: var(--bg);
+}
+
+.dark-mode .sidebar {
+  background: var(--bg);
+  box-shadow: -12px 0 24px var(--shade);
+}
+
+.dark-mode .brand-mark {
+  background: var(--light);
+  box-shadow: var(--raised-sm);
+}
+
+.dark-mode .metric.featured {
+  background: var(--paper);
+  box-shadow: var(--raised), inset 0 0 0 2px rgba(255, 140, 66, 0.35);
+}
+
+.dark-mode .note-card.pinned {
+  background: var(--paper);
+  box-shadow: var(--raised), inset 0 0 0 2px rgba(255, 140, 66, 0.4);
+}
+
+.dark-mode input,
+.dark-mode select,
+.dark-mode textarea {
+  background: #1a1e26;
+  box-shadow: inset 4px 4px 9px #0d0f12, inset -4px -4px 9px rgba(30, 34, 42, 0.5);
+}
+
+.dark-mode input:focus,
+.dark-mode select:focus,
+.dark-mode textarea:focus {
+  outline: 2px solid var(--lime);
+  outline-offset: 1px;
+}
+
+.dark-mode button.primary,
+.dark-mode .button {
+  background: var(--ink);
+  color: var(--bg);
+  box-shadow: var(--raised-sm);
+}
+
+.dark-mode button.primary:hover,
+.dark-mode .button:hover {
+  box-shadow: var(--raised);
+}
+
+.dark-mode button.primary:active,
+.dark-mode .button:active {
+  box-shadow: var(--inset-sm);
+}
+
+.dark-mode .secondary {
+  background: var(--bg);
+  color: var(--ink);
+  box-shadow: var(--raised-sm);
+}
+
+.dark-mode .secondary:hover {
+  box-shadow: var(--raised);
+}
+
+.dark-mode .modal-close,
+.dark-mode .month-nav {
+  background: var(--bg);
+  box-shadow: var(--raised-sm);
+}
+
+.dark-mode .remove-line {
+  background: var(--bg);
+  color: var(--red);
+  box-shadow: var(--raised-sm);
+}
+
+.dark-mode .provider-chip {
+  background: var(--bg);
+  box-shadow: var(--raised-sm);
+}
+
+.dark-mode .provider-chip.on {
+  background: var(--lime);
+  color: var(--bg);
+  box-shadow: var(--raised-sm);
+}
+
+.dark-mode .provider-chip.warn {
+  background: #3d2a1a;
+  color: #ffb06e;
+  box-shadow: var(--raised-sm);
+}
+
+.dark-mode .day-cell {
+  background: var(--paper);
+  box-shadow: var(--raised-sm);
+}
+
+.dark-mode .day-cell.other {
+  background: var(--bg);
+  box-shadow: none;
+}
+
+.dark-mode .day-cell:hover {
+  background: var(--paper);
+  box-shadow: var(--raised);
+}
+
+.dark-mode .day-cell.selected {
+  background: var(--bg);
+  box-shadow: var(--inset);
+}
+
+.dark-mode .day-cell.today .day-num {
+  background: var(--lime);
+  color: var(--bg);
+}
+
+.dark-mode .event-chip {
+  background: #3d2a1a;
+  color: #ffb06e;
+  border-radius: var(--radius-pill);
+}
+
+.dark-mode .booking-info {
+  background: var(--bg);
+  box-shadow: var(--inset);
+}
+
+.dark-mode .slot {
+  background: var(--bg);
+  box-shadow: var(--raised-sm);
+  color: var(--ink);
+}
+
+.dark-mode .slot.selected {
+  background: var(--bg);
+  color: var(--ink);
+  box-shadow: var(--inset);
+}
+
+.dark-mode #toast {
+  background: var(--ink);
+  color: var(--bg);
+  box-shadow: 8px 8px 20px rgba(0, 0, 0, 0.3);
+}
+
+.dark-mode dialog::backdrop {
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+}
+
+.dark-mode :focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+
+.dark-mode .theme-toggle .theme-icon-sun {
+  display: none;
+}
+
+.dark-mode .theme-toggle .theme-icon-moon {
+  display: block;
+}
 * {
   box-sizing: border-box;
 }
@@ -258,6 +626,42 @@ button.primary,
   color: var(--muted);
   font-size: 12px;
 }
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  border: 0;
+  border-radius: 12px;
+  box-shadow: var(--raised-sm);
+  cursor: pointer;
+  transition: box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.theme-toggle:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--raised);
+  text-decoration: none;
+}
+
+.theme-toggle:active {
+  transform: translateY(0);
+  box-shadow: var(--inset-sm);
+}
+
+.theme-toggle .theme-icon-sun {
+  display: block;
+}
+
+.theme-toggle .theme-icon-moon {
+  display: none;
+}
+
 .status-dot {
   width: 6px;
   height: 6px;
