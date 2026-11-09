@@ -227,6 +227,10 @@
   padding: 16px;
 }
 
+.rc-annulla-dialog[hidden] {
+  display: none !important;
+}
+
 .rc-annulla-card {
   background: var(--paper);
   border-radius: var(--radius);
