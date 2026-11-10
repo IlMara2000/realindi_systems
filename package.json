@@ -7,14 +7,14 @@
   "scripts": {
     "dev": "tsx scripts/dev-server.ts",
     "generate": "prisma generate && esbuild generated/prisma/client.ts --bundle --format=esm --platform=node --packages=external --outfile=generated/prisma/client.js",
-    "build": "npm run generate && npm run db:migrate && tsc --noEmit",
+    "build": "npm run generate && tsc --noEmit",
     "test": "vitest run",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:check": "tsx scripts/check-migrations.ts",
     "diagnose:ai": "tsx scripts/diagnose-ai.ts",
     "test:locale": "bash scripts/test-locale.sh",
     "db:migrate-data": "tsx scripts/migrate-sqlite.ts",
-    "vercel-build": "npm run generate && npm run db:migrate"
+    "vercel-build": "npm run generate && tsc --noEmit"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.1",

@@ -100,7 +100,7 @@ npm test          # suite Vitest (applica le migrazioni al database della run)
 npx tsc --noEmit  # controllo tipi
 npm run diagnose:ai # messaggio di prova alla Developer API: provider, modello, latenza, errore
 npm run db:check  # migrazioni ancora allineate a schema.prisma
-npm run build     # generate + migrazioni + tsc
+npm run build     # generate + tsc (senza database)
 ```
 
 **Test end-to-end di Buffy.** `npm test` include `tests/agent.e2e.test.ts`: avvia il server HTTP reale sul database della run e un provider AI locale OpenAI-compatibile, con `AGENT_API_KEY` di prova verificata come Bearer. Copre azioni solo proposte senza scritture, preventivo con totali, accettazione con fattura bozza, pagamento dopo la numerazione fiscale, ricevuta emessa e annullata, messaggio al cliente inviato solo alla conferma. Per un controllo in sola lettura sul provider vero configurato in `.env`: `AGENT_E2E_LIVE=1 npm test -- tests/agent.e2e.test.ts` (una chiamata reale, nessuna azione applicata).
@@ -124,8 +124,10 @@ Il file `.env` non viene modificato: le variabili valgono solo per quella esecuz
 Lo schema vive in `prisma/migrations/`, non più in un `db push`: ogni modifica è un file SQL versionato, applicato una sola volta e registrato in `_prisma_migrations`.
 
 ```sh
-npm run db:migrate   # applica le migrazioni mancanti (lo usa anche il deploy Vercel)
+npm run db:migrate   # applica le migrazioni mancanti, con la DIRECT_URL dell'ambiente
 ```
+
+`npm run build` non si connette al database, quindi il deploy Vercel non applica più le migrazioni e non richiede `DATABASE_URL` in fase di build. Le migrazioni sono un passo separato: eseguile con la `DIRECT_URL` dell'ambiente prima o dopo il deploy.
 
 Le migrazioni e i comandi Prisma usano `DIRECT_URL` quando è impostata, e altrimenti `DATABASE_URL`. Conviene tenerle separate: `DIRECT_URL` punta all'endpoint diretto (`db.prisma.io`), perché il pooler non conserva lo stato di sessione che `migrate` richiede; `DATABASE_URL` resta quella pooled, usata dall'applicazione, perché le connessioni dirette sono limitate dal piano.
 
