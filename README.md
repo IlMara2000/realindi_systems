@@ -103,6 +103,8 @@ npm run db:check  # migrazioni ancora allineate a schema.prisma
 npm run build     # generate + migrazioni + tsc
 ```
 
+**Test end-to-end di Buffy.** `npm test` include `tests/agent.e2e.test.ts`: avvia il server HTTP reale sul database della run e un provider AI locale OpenAI-compatibile, con `AGENT_API_KEY` di prova verificata come Bearer. Copre azioni solo proposte senza scritture, preventivo con totali, accettazione con fattura bozza, pagamento dopo la numerazione fiscale, ricevuta emessa e annullata, messaggio al cliente inviato solo alla conferma. Per un controllo in sola lettura sul provider vero configurato in `.env`: `AGENT_E2E_LIVE=1 npm test -- tests/agent.e2e.test.ts` (una chiamata reale, nessuna azione applicata).
+
 ### Test in locale senza il database cloud
 
 La suite e il controllo delle migrazioni hanno bisogno di un database. In CI usano un Postgres 17 effimero; in locale si fa lo stesso, invece di puntare all'istanza Prisma Postgres:
