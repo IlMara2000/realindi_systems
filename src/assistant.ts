@@ -32,11 +32,11 @@ export interface KnowledgeSummary {
   updated_at: string;
 }
 
-// La Developer API di Freebuff è OpenAI-compatibile e il suo elenco modelli è
-// pubblico: GET https://freebuff.com/api/v1/paid/models.
+// Default: Developer API di Freebuff (OpenAI-compatibile, elenco modelli su
+// https://freebuff.com/api/v1/paid/models). Un gateway locale come FreeLLMAPI
+// resta possibile via AI_BASE_URL o dal campo in Canali & AI: il suo URL token
+// appartiene alla configurazione, non al codice.
 export const DEFAULT_BASE_URL = "https://freebuff.com/api/v1/paid";
-// Fascia di costo bassa, multilingua solido, senza il tempo di ragionamento
-// dei modelli "thinking": adatto a risposte brevi entro il timeout di 12 s.
 export const DEFAULT_MODEL = "deepseek-v4.1-flash";
 const MAX_PAGES = 8;
 const MAX_PAGE_CHARS = 6000;
@@ -81,7 +81,7 @@ export async function storedAiKey(): Promise<string | null> {
 export async function aiKey(): Promise<string | null> {
   const stored = await storedAiKey();
   if (stored) return stored;
-  const envKey = process.env.AI_API_KEY || process.env.OPENAI_API_KEY;
+  const envKey = process.env.FREELLMAPI_API_KEY || process.env.AI_API_KEY || process.env.OPENAI_API_KEY;
   return envKey && envKey.trim() ? envKey.trim() : null;
 }
 
@@ -511,7 +511,11 @@ export async function generateReply(input: {
     prisma().knowledgeDoc.findMany({ orderBy: { url: "asc" } }),
     settings(),
   ]);
-  if (!key) {
+  // Quando il base_url contiene un URL token (/v1/t/<token>/...), il gateway
+  // FreeLLMAPI imposta automaticamente l'header Authorization con la unified_api_key.
+  // In quel caso una chiave client non è necessaria.
+  const gatewayTokenPath = /\/v1\/t\//.test(cfg.base_url);
+  if (!key && !gatewayTokenPath) {
     throw new Invalid(
       "Nessuna chiave AI configurata. Apri Canali & AI → Assistente e incolla la chiave del provider (oppure imposta AI_API_KEY nel file .env).",
     );
@@ -539,15 +543,14 @@ export async function generateReply(input: {
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 12_000);
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (key) headers.Authorization = `Bearer ${key}`;
   let res: Response;
   try {
     res = await fetch(`${cfg.base_url}/chat/completions`, {
       method: "POST",
       signal: controller.signal,
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify({
         model: cfg.model,
         messages,

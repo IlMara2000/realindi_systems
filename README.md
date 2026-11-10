@@ -69,7 +69,13 @@ In Twilio → Numbers → Messaging incolla l'URL del webhook in *A message come
 
 #### Provider AI
 
-L'assistente chiama un endpoint **OpenAI-compatibile** (`/chat/completions`). Il default è la **Developer API di Freebuff**, `https://freebuff.com/api/v1/paid`: la chiave si crea da Account → Developer API su [freebuff.com/account/api](https://freebuff.com/account/api) e i modelli disponibili sono elencati da `GET https://freebuff.com/api/v1/paid/models`. Il default è `deepseek-v4.1-flash`: fascia di costo bassa, buon multilingua e nessun tempo di ragionamento, quindi risposte brevi entro il timeout di 12 secondi. Alternative: `glm-5.3-flash` (circa la metà del costo, ma con ragionamento), `gpt-6-luna` (più caro, qualità GPT) e `gemini-3.8-flash` (solo piani paid). Va bene comunque qualsiasi altro gateway compatibile, come OpenAI o Z.ai: in *Canali & AI → Assistente* puoi incollare nome modello, base URL e chiave API, che viene cifrata nel database.
+L'assistente chiama un endpoint **OpenAI-compatibile** (`/chat/completions`). Il default è la **Developer API di Freebuff**:
+- **Endpoint**: `https://freebuff.com/api/v1/paid` — elenco dei modelli su `https://freebuff.com/api/v1/paid/models`
+- **Modello**: `deepseek-v4.1-flash`
+- **Chiave**: la Developer API key (Account → Developer API), incollata in *Canali & AI → Assistente* (cifrata nel database) oppure in `AI_API_KEY`
+- **Alternativa locale**: un gateway multi-provider come FreeLLMAPI si imposta in *Canali & AI* o con `AI_BASE_URL` (`http://127.0.0.1:31415/v1/t/<token>`): il suo URL token appartiene alla configurazione, non al codice. Su Vercel `127.0.0.1` non è raggiungibile, quindi serve un indirizzo pubblico (es. un tunnel).
+
+Va bene comunque qualsiasi altro gateway compatibile: in *Canali & AI → Assistente* puoi incollare nome modello, base URL e chiave API, che viene cifrata nel database.
 
 Per verificare chiave ed endpoint senza aprire il CRM: `npm run diagnose:ai` invia un messaggio minimo e stampa provider, modello, latenza e l'eventuale errore del provider; un messaggio personalizzato si passa come argomento (`npm run diagnose:ai -- "Ciao, fate siti?"`). La chiave viene usata ma mai stampata — si vedono solo provenienza (database o variabile d'ambiente) e lunghezza — e il testo restituito dal provider passa da una redazione, perché un errore può ripeterla. Uscita 0 risposta ricevuta, 1 provider in errore o irraggiungibile, 2 chiave assente. Se il database non risponde il comando usa le sole variabili d'ambiente, utile per capire se il guasto è l'AI o la connessione al database.
 
