@@ -1,0 +1,538 @@
+/* Buffy, assistente operativo. Usa gli stessi token del workspace REALINDI. */
+
+.agent-launch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 5px 11px 5px 6px;
+  border: 1px solid var(--line, rgba(20, 20, 24, 0.14));
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: var(--raised-sm, 0 1px 2px rgba(20, 20, 24, 0.08));
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.agent-launch:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--raised, 0 6px 18px rgba(20, 20, 24, 0.12));
+}
+
+.agent-launch:active {
+  transform: translateY(0);
+}
+
+.agent-launch-mark {
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  background: var(--lime);
+  color: #17171b;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.agent-launch-label {
+  line-height: 1;
+}
+
+.link-button {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  color: var(--lime);
+}
+
+body.buffy-open {
+  overflow: hidden;
+}
+
+#buffy-root {
+  position: relative;
+  z-index: 90;
+}
+
+.buffy-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgba(16, 16, 20, 0.42);
+  backdrop-filter: blur(3px);
+}
+
+.buffy-scrim[hidden] {
+  display: none;
+}
+
+.buffy-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  width: min(440px, 100vw);
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  border-left: 1px solid var(--line, rgba(20, 20, 24, 0.12));
+  background: var(--bg);
+  color: var(--ink);
+  box-shadow: -24px 0 60px rgba(16, 16, 20, 0.24);
+  transform: translateX(102%);
+  visibility: hidden;
+  transition: transform 0.24s ease, visibility 0.24s ease;
+}
+
+#buffy-root.buffy-open .buffy-panel {
+  transform: translateX(0);
+  visibility: visible;
+}
+
+.buffy-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 18px 18px 13px;
+  border-bottom: 1px solid var(--line, rgba(20, 20, 24, 0.1));
+  background: var(--paper);
+}
+
+.buffy-avatar {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--lime);
+  color: #17171b;
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.buffy-head-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.buffy-eyebrow {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--muted, #74747d);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  line-height: 1.2;
+}
+
+.buffy-head h2 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.buffy-icon-button {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted, #74747d);
+  font: inherit;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.buffy-icon-button:hover {
+  border-color: var(--line, rgba(20, 20, 24, 0.14));
+  background: var(--inset, rgba(20, 20, 24, 0.05));
+  color: var(--ink);
+}
+
+.buffy-close {
+  font-size: 23px;
+}
+
+.buffy-context {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--line, rgba(20, 20, 24, 0.08));
+  color: var(--muted, #74747d);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.buffy-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--lime);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lime) 22%, transparent);
+}
+
+.buffy-messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px 16px 10px;
+  overscroll-behavior: contain;
+}
+
+.buffy-row {
+  display: flex;
+  margin-bottom: 12px;
+}
+
+.buffy-row.user {
+  justify-content: flex-end;
+}
+
+.buffy-bubble {
+  max-width: 88%;
+  padding: 11px 13px;
+  border: 1px solid var(--line, rgba(20, 20, 24, 0.1));
+  border-radius: 16px 16px 16px 5px;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: var(--raised-sm, 0 1px 2px rgba(20, 20, 24, 0.05));
+}
+
+.buffy-row.user .buffy-bubble {
+  border-color: transparent;
+  border-radius: 16px 16px 5px 16px;
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.buffy-bubble p {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.buffy-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 11px;
+}
+
+.buffy-action {
+  padding: 9px 10px;
+  border: 1px solid var(--line, rgba(20, 20, 24, 0.14));
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.buffy-action.is-applied {
+  opacity: 0.62;
+}
+
+.buffy-action strong {
+  display: block;
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.buffy-action p {
+  margin: 3px 0 0;
+  color: var(--muted, #74747d);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.buffy-action-data {
+  display: grid;
+  gap: 3px;
+  margin: 7px 0 0;
+  padding: 7px 0 0;
+  border-top: 1px solid var(--line, rgba(20, 20, 24, 0.1));
+}
+
+.buffy-action-data > div {
+  display: grid;
+  grid-template-columns: minmax(74px, 0.8fr) minmax(0, 1.2fr);
+  gap: 7px;
+}
+
+.buffy-action-data dt,
+.buffy-action-data dd {
+  margin: 0;
+  font-size: 10.5px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.buffy-action-data dt {
+  color: var(--muted, #74747d);
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.buffy-action-data dd {
+  color: var(--ink);
+  white-space: pre-wrap;
+}
+
+.buffy-action-apply {
+  margin-top: 8px;
+  padding: 4px 10px;
+  border: 1px solid var(--ink);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.buffy-action-apply:hover:not(:disabled) {
+  background: var(--lime);
+  border-color: var(--lime);
+  color: #17171b;
+}
+
+.buffy-action-apply:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.buffy-apply-all {
+  width: 100%;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--lime);
+  color: #17171b;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.buffy-apply-all:hover:not(:disabled) {
+  filter: brightness(0.96);
+}
+
+.buffy-apply-all:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.buffy-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 2px 0 8px 4px;
+}
+
+.buffy-suggestion {
+  padding: 6px 9px;
+  border: 1px dashed var(--line, rgba(20, 20, 24, 0.2));
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted, #74747d);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.buffy-suggestion:hover {
+  border-style: solid;
+  border-color: var(--lime);
+  color: var(--ink);
+}
+
+.buffy-typing {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 20px 6px;
+  color: var(--muted, #74747d);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.buffy-typing[hidden] {
+  display: none;
+}
+
+.buffy-typing-dots {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.buffy-typing-dots i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--lime);
+  animation: buffy-pulse 1.1s infinite ease-in-out;
+}
+
+.buffy-typing-dots i:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.buffy-typing-dots i:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+@keyframes buffy-pulse {
+  0%,
+  70%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  35% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+.buffy-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  margin: 4px 14px 0;
+  padding: 7px 7px 7px 12px;
+  border: 1px solid var(--line, rgba(20, 20, 24, 0.16));
+  border-radius: 18px;
+  background: var(--paper);
+  box-shadow: var(--inset, inset 0 1px 3px rgba(20, 20, 24, 0.05));
+}
+
+.buffy-composer textarea {
+  flex: 1;
+  min-height: 28px;
+  max-height: 120px;
+  padding: 5px 0 3px;
+  border: 0;
+  outline: 0;
+  resize: none;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.buffy-composer textarea::placeholder {
+  color: var(--muted, #74747d);
+}
+
+.buffy-send {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--lime);
+  color: #17171b;
+  font: inherit;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.buffy-send:hover:not(:disabled) {
+  filter: brightness(0.95);
+}
+
+.buffy-send:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.buffy-footnote {
+  margin: 7px 18px 0;
+  padding-bottom: max(13px, env(safe-area-inset-bottom));
+  color: var(--muted, #74747d);
+  font-size: 10px;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.agent-launch:focus-visible,
+.buffy-panel button:focus-visible,
+.buffy-panel textarea:focus-visible {
+  outline: 2px solid var(--lime);
+  outline-offset: 2px;
+}
+
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+@media (max-width: 720px) {
+  .agent-launch {
+    padding-right: 7px;
+  }
+
+  .agent-launch-label {
+    display: none;
+  }
+
+  .buffy-panel {
+    width: 100vw;
+    border-left: 0;
+  }
+
+  .buffy-head {
+    padding-top: max(15px, env(safe-area-inset-top));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .buffy-panel,
+  .agent-launch,
+  .buffy-typing-dots i {
+    transition: none;
+    animation: none;
+  }
+}

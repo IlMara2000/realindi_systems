@@ -75,6 +75,7 @@ import {
   saveAssistantKey,
   trainFromSite,
 } from "./assistant.js";
+import { agentReply, executeAgentActions } from "./agent.js";
 import { replyLimit } from "./ratelimit.js";
 import {
   conversationThread,
@@ -171,6 +172,8 @@ const MIME: Record<string, string> = {
   "app.html": "text/html; charset=utf-8",
   "bio.html": "text/html; charset=utf-8",
   "app.js": "text/javascript; charset=utf-8",
+  "agent.js": "text/javascript; charset=utf-8",
+  "agent.css": "text/css; charset=utf-8",
   "estimate.js": "text/javascript; charset=utf-8",
   "fiscal.js": "text/javascript; charset=utf-8",
   "site.js": "text/javascript; charset=utf-8",
@@ -185,6 +188,8 @@ const MIME: Record<string, string> = {
 
 const STATIC_FILES = new Set([
   "/app.js",
+  "/agent.js",
+  "/agent.css",
   "/estimate.js",
   "/fiscal.js",
   "/site.js",
@@ -575,7 +580,7 @@ async function handleGet(req: HandlerRequest): Promise<HandlerResponse> {
     return send({
       limits: bloccati
         // ":anonimo" è il budget delle prove manuali, non un contatto vero.
-        .filter((l) => !l.key.endsWith(":anonimo"))
+        .filter((l) => !l.key.endsWith(":anonimo") && !l.key.startsWith("owner:"))
         .map((l) => ({
           channel: l.key.slice(0, l.key.indexOf(":")),
           contact: l.key.slice(l.key.indexOf(":") + 1),
@@ -606,7 +611,7 @@ async function handleGet(req: HandlerRequest): Promise<HandlerResponse> {
     if (q.get("error")) return sendError(403, "Autorizzazione Google annullata.");
     const saved = await googleCallback(q, originOf(req));
     if (!saved) return sendError(403, "Stato OAuth non valido.");
-    return send("", 302, "text/plain; charset=utf-8", [["Location", "/app?view=settings&linked=google"]]);
+    return send("", 302, "text/plain; charset=utf-8", [["Location", "/app?view=channels&linked=google"]]);
   }
 
   if (path === "/api/state") {
@@ -976,6 +981,15 @@ async function handlePost(req: HandlerRequest): Promise<HandlerResponse> {
   // ------------------------------------------------------------ autenticati
   const sessionToken = parseCookie(req.headers.cookie, "crm_session");
   if (!(await auth(sessionToken))) throw new Invalid("Sessione scaduta. Accedi di nuovo.");
+
+  // --------------------------------------------------------- Buffy, proprietario
+  if (path === "/api/agent") {
+    return send({ ok: true, ...(await agentReply(d.messages)) });
+  }
+
+  if (path === "/api/agent/actions") {
+    return send({ ok: true, ...(await executeAgentActions(d.actions)) });
+  }
 
   // --------------------------------------------------------- canali e assistente
   if (path === "/api/channels") {

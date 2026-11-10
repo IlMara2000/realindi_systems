@@ -122,8 +122,7 @@ const labels = {
   planner: "Calendario",
   notes: "Note",
   messages: "Messaggi",
-  channels: "Canali & AI",
-  settings: "Impostazioni",
+  channels: "Canali",
   discovery: "In definizione",
   active: "In corso",
   paused: "In pausa",
@@ -314,9 +313,12 @@ function render() {
   route = location.hash.slice(1) || "dashboard";
   themeControl.transient = false;
   themeControl.restore();
-  if (!labels[route]) route = "dashboard";
+  if (!labels[route]) {
+    route = "dashboard";
+    if (location.hash) history.replaceState(null, "", "#dashboard");
+  }
   $("#root").innerHTML =
-    `<div class="shell"><div class="drawer-scrim" data-action="menu-close" aria-hidden="true"></div><button type="button" class="drawer-tab" data-action="menu-open" aria-controls="crm-menu" aria-expanded="false" aria-label="Apri il menu"><span aria-hidden="true">‹</span></button><aside class="sidebar" id="crm-menu"><button type="button" class="drawer-close" data-action="menu-close" aria-label="Chiudi il menu">×</button><a class="brand" href="#dashboard"><img class="brand-mark" src="/assets/logo-realindi.png" alt="" width="32" height="32"> REALINDI</a><div class="brand-sub">FREELANCER WORKSPACE</div><div class="nav-label">WORKSPACE</div><nav class="nav" aria-label="Menu principale">${["dashboard", "messages", "clients", "projects", "quotes", "invoices", "ricevute", "documents", "calendar", "planner", "notes", "channels", "settings"].map((k) => k === "ricevute" ? `<a href="/ricevute">${icon("invoices")}Ricevute</a>` : `<a href="#${k}" class="${route === k ? "active" : ""}" ${route === k ? 'aria-current="page"' : ""}>${icon(k)}${labels[k]}</a>`).join("")}</nav><div class="sidebar-bottom"><div class="nav-label">IL TUO BUSINESS, IN ORDINE.</div><div class="account"><span class="avatar">${esc((state.settings.owner_name || "RS").slice(0, 2).toUpperCase())}</span><div>${esc(state.settings.owner_name || "Il tuo workspace")}<small>Consulente indipendente</small></div></div></div></aside><main class="main"><header class="topbar"><div class="topbar-head"><a class="back-site" href="/">Torna al sito</a><div class="crumb">Workspace <span>/ &nbsp; ${labels[route]}</span></div></div><div class="top-right"><span class="local-status"><i class="status-dot"></i>Archivio locale</span>${btn("Esci", "logout", "", "secondary small")}<button type="button" class="theme-toggle" id="theme-toggle" aria-label="Cambia tema" aria-pressed="${document.documentElement.classList.contains("dark-mode")}"><svg class="theme-icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg><svg class="theme-icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button><button type="button" class="nav-toggle" data-action="menu-toggle" aria-controls="crm-menu" aria-expanded="false" aria-label="Apri il menu"><span class="nav-toggle-bars" aria-hidden="true"></span></button></div></header><div class="content" id="content"></div></main></div>`;
+    `<div class="shell"><div class="drawer-scrim" data-action="menu-close" aria-hidden="true"></div><button type="button" class="drawer-tab" data-action="menu-open" aria-controls="crm-menu" aria-expanded="false" aria-label="Apri il menu"><span aria-hidden="true">‹</span></button><aside class="sidebar" id="crm-menu"><button type="button" class="drawer-close" data-action="menu-close" aria-label="Chiudi il menu">×</button><a class="brand" href="#dashboard"><img class="brand-mark" src="/assets/logo-realindi.png" alt="" width="32" height="32"> REALINDI</a><div class="brand-sub">FREELANCER WORKSPACE</div><div class="nav-label">WORKSPACE</div><nav class="nav" aria-label="Menu principale">${["dashboard", "messages", "clients", "projects", "quotes", "invoices", "ricevute", "documents", "calendar", "planner", "notes", "channels"].map((k) => k === "ricevute" ? `<a href="/ricevute">${icon("invoices")}Ricevute</a>` : `<a href="#${k}" class="${route === k ? "active" : ""}" ${route === k ? 'aria-current="page"' : ""}>${icon(k)}${labels[k]}</a>`).join("")}</nav><div class="sidebar-bottom"><div class="nav-label">IL TUO BUSINESS, IN ORDINE.</div><div class="account"><span class="avatar">${esc((state.settings.owner_name || "RS").slice(0, 2).toUpperCase())}</span><div>${esc(state.settings.owner_name || "Il tuo workspace")}<small>Consulente indipendente</small></div></div></div></aside><main class="main"><header class="topbar"><div class="topbar-head"><a class="back-site" href="/">Torna al sito</a><div class="crumb">Workspace <span>/ &nbsp; ${labels[route]}</span></div></div><div class="top-right"><button type="button" class="agent-launch" data-action="agent-open" aria-controls="buffy-panel" aria-expanded="false"><span class="agent-launch-mark" aria-hidden="true">B</span><span class="agent-launch-label">Buffy</span></button><span class="local-status"><i class="status-dot"></i>Archivio locale</span>${btn("Esci", "logout", "", "secondary small")}<button type="button" class="theme-toggle" id="theme-toggle" aria-label="Cambia tema" aria-pressed="${document.documentElement.classList.contains("dark-mode")}"><svg class="theme-icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg><svg class="theme-icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button><button type="button" class="nav-toggle" data-action="menu-toggle" aria-controls="crm-menu" aria-expanded="false" aria-label="Apri il menu"><span class="nav-toggle-bars" aria-hidden="true"></span></button></div></header><div class="content" id="content"></div></main></div>`;
   renderContent();
   if (pendingToast) {
     const t = pendingToast;
@@ -337,13 +339,10 @@ function renderContent() {
     notes,
     messages: messagesView,
     channels: channelsView,
-    settingsView,
   };
-  $("#content").innerHTML = (
-    route === "settings" ? settingsView : views[route]
-  )();
+  $("#content").innerHTML = views[route]();
   if (route === "dashboard" && (!state.settings.tax_regime || !state.settings.vat_number)) {
-    $("#content").insertAdjacentHTML("afterbegin", '<div class="callout"><strong>Configura la tua azienda</strong><br>Inserisci dati fiscali e preferenze di fatturazione prima di generare il primo XML. <a href="#settings">Apri impostazioni →</a></div>');
+    $("#content").insertAdjacentHTML("afterbegin", '<div class="callout"><strong>Configura la tua azienda</strong><br>Inserisci dati fiscali e preferenze di fatturazione prima di generare il primo XML. <button type="button" class="link-button" data-action="agent-open">Chiedi a Buffy →</button></div>');
   }
   bindView();
   if (route === "planner") loadPlannerEvents();
@@ -612,7 +611,7 @@ function calendar() {
       "La tua pagina di prenotazione, con disponibilità personalizzate.",
       `<a class="button" href="${bookingUrl()}" target="_blank" rel="noopener">Apri pagina pubblica ↗</a>`,
     ) +
-    `<div class="grid-two">${panel("Il tuo link di prenotazione", `<div class="panel-body"><p class="subtitle">${esc(state.settings.booking_title)} · ${state.settings.booking_duration} minuti</p><p class="link-box">${esc(bookingUrl())}</p><div class="actions">${btn("Copia link", "copy-booking")}<a href="#settings">Modifica disponibilità →</a></div><p class="hint">${online ? "Link pubblico attivo: puoi condividerlo con i clienti. Funziona finché server e tunnel restano attivi." : "Questo link funziona solo su questo computer. Apri «Pubblica prenotazioni.command» per un indirizzo HTTPS condivisibile, oppure inseriscilo in Impostazioni."}</p></div>`)}${panel("Periodi non disponibili", `<div class="panel-body">${state.blocks.length ? state.blocks.map((b) => `<div class="list-row"><div class="list-info"><strong>${esc(b.reason || "Non disponibile")}</strong><small>${timeLabel(b.start)} → ${timeLabel(b.end)}</small></div>${btn("Rimuovi", "delete-block", b.id)}</div>`).join("") : '<p class="subtitle">Nessuna assenza impostata.</p>'}<div class="section-gap">${btn("+ Blocca un periodo", "new-block")}</div></div>`)}</div>` +
+    `<div class="grid-two">${panel("Il tuo link di prenotazione", `<div class="panel-body"><p class="subtitle">${esc(state.settings.booking_title)} · ${state.settings.booking_duration} minuti</p><p class="link-box">${esc(bookingUrl())}</p><div class="actions">${btn("Copia link", "copy-booking")}<button type="button" class="link-button" data-action="agent-open">Chiedi a Buffy →</button></div><p class="hint">${online ? "Link pubblico attivo: puoi condividerlo con i clienti. Funziona finché server e tunnel restano attivi." : "Questo link funziona solo su questo computer. Apri «Pubblica prenotazioni.command» per un indirizzo HTTPS condivisibile, oppure chiedi a Buffy di inserirlo."}</p></div>`)}${panel("Periodi non disponibili", `<div class="panel-body">${state.blocks.length ? state.blocks.map((b) => `<div class="list-row"><div class="list-info"><strong>${esc(b.reason || "Non disponibile")}</strong><small>${timeLabel(b.start)} → ${timeLabel(b.end)}</small></div>${btn("Rimuovi", "delete-block", b.id)}</div>`).join("") : '<p class="subtitle">Nessuna assenza impostata.</p>'}<div class="section-gap">${btn("+ Blocca un periodo", "new-block")}</div></div>`)}</div>` +
     searchbar("Cerca appuntamento…", ["confirmed", "cancelled"]) +
     panel(
       "Appuntamenti",
@@ -736,7 +735,7 @@ function emailNoteModal(id) {
     `<form class="form-grid">${field("A", "to", "email", to, 'required placeholder="cliente@example.com"')}${field("Oggetto", "subject", "text", n.title, 'required maxlength="200"')}${area("Messaggio", "body", n.body)}<div class="field full"><p class="hint">${
       sender
         ? "Mittente: " + esc(sender)
-        : "Nessun mittente collegato: aggiungilo in Impostazioni → Integrazioni per inviare email."
+        : "Nessun mittente collegato: configura Apple in Canali → Integrazioni."
     }</p></div>${formBottom("Invia")}</form>`,
     async (d) => {
       await api("/api/email/send", { to: d.to, subject: d.subject, body: d.body });
@@ -758,7 +757,7 @@ function emailEventModal(id) {
     )}<div class="field full check-row"><label><input type="checkbox" name="with_ics" checked>Allega l’invito .ics</label></div><div class="field full"><p class="hint">${
       sender
         ? "Mittente: " + esc(sender)
-        : "Nessun mittente collegato: aggiungilo in Impostazioni → Integrazioni per inviare email."
+        : "Nessun mittente collegato: configura Apple in Canali → Integrazioni."
     }</p></div>${formBottom("Invia")}</form>`,
     async (d) => {
       const payload = { to: d.to, subject: d.subject, body: d.body };
@@ -865,8 +864,8 @@ function planner() {
     )}${integ.key_configured === false ? chip("warn", "INTEGRATIONS_KEY non configurata") : ""}<span class="hint">${
       integ.google.connected || integ.apple.connected
         ? "Sincronizza per aggiornare gli eventi dai provider."
-        : "Collega Google o Apple in Impostazioni → Integrazioni per sincronizzare."
-    }</span><span class="actions">${btn("Sincronizza ora", "planner-sync")}</span></div>` +
+        : "Collega Google o Apple da Canali → Integrazioni per sincronizzare."
+    }</span><span class="actions">${btn("Sincronizza ora", "planner-sync")}${btn("Integrazioni", "open-channels")}</span></div>` +
     `<div class="grid-two"><section class="panel"><div class="panel-head"><div class="month-head"><button type="button" class="month-nav" data-action="month-prev" aria-label="Mese precedente">‹</button><h2>${monthLabel}</h2><button type="button" class="month-nav" data-action="month-next" aria-label="Mese successivo">›</button></div>${btn("Oggi", "month-today", "", "secondary small")}</div><div class="month-grid">${["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"]
       .map((w) => `<div class="wd">${w}</div>`)
       .join("")}${cells.join("")}</div></section>` +
@@ -970,7 +969,7 @@ function conversationName(c) {
 function messagesView() {
   const channels = state.channels || [];
   const conversations = state.conversations || [];
-  const actions = btn("Aggiorna", "refresh-inbox") + btn("Canali & AI", "open-channels");
+  const actions = btn("Aggiorna", "refresh-inbox") + btn("Canali", "open-channels");
   if (!channels.length) {
     return (
       title("Messaggi", "WhatsApp, Instagram e SMS in un'unica inbox.", actions) +
@@ -1061,6 +1060,27 @@ function channelCard(p) {
     `<div class="panel-body provider-card"><div class="sync-row">${channelChip(c)}${c && c.detail ? `<span class="hint">${esc(c.detail)}</span>` : ""}</div>${c?.last_error ? `<div class="error">${esc(c.last_error)}</div>` : ""}<form id="channel-form-${p.id}" data-channel="${p.id}" class="form-grid">${c ? `<input type="hidden" name="id" value="${c.id}">` : ""}${field("Etichetta", "label", "text", c?.label || p.name, "", p.id)}${providerFields(p.id, c, p.id)}<div class="field full check-row"><label><input type="checkbox" name="auto_reply" ${!c || c.auto_reply ? "checked" : ""}>Risposta automatica su questo canale</label></div><div class="error" role="alert"></div><div class="form-actions"><button class="primary" type="submit">${c ? "Aggiorna e verifica" : "Collega"}</button>${c ? btn("Verifica", "channel-verify", c.id) : ""}${c ? btn("Disconnetti", "channel-delete", c.id, "secondary small danger") : ""}</div></form><div class="webhook-box"><span>Webhook URL</span><code>${esc(webhook)}</code><button type="button" class="secondary small" data-action="copy-webhook" data-provider="${p.id}">Copia</button></div>${c ? `<div class="test-row"><input id="test-to-${p.id}" aria-label="Destinatario di prova" placeholder="${p.id === "instagram" ? "IGSID del destinatario" : "+39…"}"><button type="button" class="secondary small" data-action="channel-test" data-id="${c.id}" data-provider="${p.id}">Invia test</button></div>` : ""}<p class="hint">${p.hint}</p></div>`,
   );
 }
+function integrationsPanel() {
+  const integ = state.integrations || {};
+  const googleState = integ.google || {};
+  const appleState = integ.apple || {};
+  const s = state.settings || {};
+  const googleOn = Boolean(googleState.connected);
+  const appleOn = Boolean(appleState.connected);
+  const chips = `<div class="sync-row"><span class="provider-chip ${googleOn ? "on" : "off"}">Google ${googleOn ? (googleState.needs_reauth ? "· riautentica" : "· collegato") : "· non collegato"}</span><span class="provider-chip ${appleOn ? "on" : "off"}">Apple ${appleOn ? "· collegato" : "· non collegato"}</span><span class="hint">${integ.sender ? "Mittente email: " + esc(integ.sender) : "Nessun mittente email configurato."}</span></div>${integ.key_configured === false ? '<div class="callout"><strong>Configurazione mancante</strong><br>La variabile INTEGRATIONS_KEY non è presente nel file .env: le integrazioni restano disattivate finché non la aggiungi.</div>' : ""}`;
+  const googleBlock = panel(
+    "Google Calendar e Gmail",
+    `<div class="panel-body"><p class="subtitle">${googleOn ? "Calendario sincronizzato e inbox Gmail disponibile." : "Consente la sincronizzazione del calendario e la lettura dell'inbox Gmail."}</p><div class="actions">${btn(googleOn ? "Riconnetti Google" : "Collega Google", "google-connect", "", "primary")}</div><p class="hint">Ti verrà chiesto di autorizzare Calendar e Gmail (sola lettura per l'inbox). Al ritorno tornerai su Canali.</p></div>`,
+  );
+  const appleBlock = panel(
+    "Apple iCloud",
+    `<div class="panel-body"><form id="apple-form" class="form-grid">${field("Apple ID", "apple_id", "email", "", 'placeholder="nome@icloud.com" autocomplete="username"')}${field("Password specifica per le app", "app_password", "password", "", `placeholder="${appleOn ? "Già salvata — per cambiarla inseriscine una nuova" : "xxxx-xxxx-xxxx-xxxx"}" autocomplete="new-password"`)}${field("Mittente email", "sender_email", "email", integ.sender || s.email || "", 'placeholder="nome@icloud.com"')}<div class="error" role="alert"></div><div class="form-actions"><button class="primary" type="submit">Salva collegamento Apple</button></div></form>${appleOn ? `<div class="actions section-gap">${btn("Disconnetti Apple", "apple-disconnect", "", "secondary small danger")}</div>` : ""}<p class="hint">Crea la password per le app su account.apple.com → Accesso e sicurezza. Serve per SMTP (invio) e IMAP (lettura) di iCloud; la password non viene mai riletta dal server.</p></div>`,
+  );
+  return panel(
+    "Integrazioni",
+    `<div class="panel-body">${chips}<div class="settings-grid">${googleBlock}${appleBlock}</div><p class="hint">Il mittente email usa iCloud. Per WhatsApp, Instagram e SMS usa le schede dei canali qui sotto.</p>${googleOn || appleOn ? `<div class="actions section-gap">${btn("Sincronizza ora", "planner-sync")}<a href="#planner">Apri calendario →</a></div>` : ""}</div>`,
+  );
+}
 function channelsView() {
   const a = state.assistant || {};
   const k = state.knowledge || { docs: [], chars: 0, trained_at: "" };
@@ -1088,13 +1108,12 @@ function channelsView() {
   const knowledgePanel = `<div class="panel-body"><p class="subtitle">L'assistente usa solo ciò che trova qui: le pagine del sito e la scheda attività costruita dalle impostazioni. Aggiorna dopo ogni modifica a servizi, prezzi o orari.</p><div class="sync-row"><span class="provider-chip ${k.trained_at ? "on" : "off"}">${k.trained_at ? "Aggiornato il " + esc(k.trained_at.slice(0, 10)) : "Mai aggiornato"}</span><span class="hint">${(k.docs || []).length} fonti · ${k.chars || 0} caratteri</span></div><div class="actions section-gap">${btn("Aggiorna conoscenza dal sito", "train-assistant", "", "primary")}${btn("Apri il sito", "open-site")}</div><div id="train-result" class="hint"></div><ul class="doc-list">${(k.docs || []).map((d) => `<li><strong>${esc(d.title)}</strong><small>${esc(d.url)} · ${d.chars} caratteri</small></li>`).join("") || "<li><small>Nessuna fonte raccolta: premi il pulsante per leggere il sito.</small></li>"}</ul></div>`;
   const playground = `<div class="panel-body"><p class="subtitle">Simula un messaggio di un cliente: usa la conoscenza raccolta e non invia nulla.</p><form id="assistant-test-form"><div class="field full"><label for="assistant-test-text">Messaggio del cliente</label><textarea id="assistant-test-text" name="text" rows="3" required placeholder="Ciao, fate anche manutenzione di siti esistenti?"></textarea></div><div class="error" role="alert"></div><div class="form-actions"><button class="primary" type="submit">Genera risposta</button></div></form><div id="assistant-test-result" class="assistant-result" aria-live="polite"></div></div>`;
   return (
-    title("Canali & AI", "Collega WhatsApp, Instagram e SMS e addestra l'assistente sulla tua attività.", btn("Apri inbox", "open-inbox")) +
-    `<div class="callout"><strong>Come funziona</strong><br>Collega un canale, incolla l'URL del webhook nel pannello del provider e premi «Aggiorna conoscenza dal sito». Da quel momento l'assistente risponde con le informazioni della tua attività e tu vedi tutto in Messaggi.</div>` +
+    title("Canali", "WhatsApp, Instagram e SMS, con Google Calendar, Apple iCloud e mittente email.", btn("Apri inbox", "open-inbox")) +
+    `<div class="callout"><strong>Canali e integrazioni</strong><br>Configura WhatsApp, Instagram e SMS nelle schede qui sotto; Google Calendar, Apple iCloud e il mittente email nel pannello Integrazioni. Per il gestionale usa Buffy.</div>` +
     `<div id="limiti-avviso" class="limiti-avviso" role="status" aria-live="polite" hidden></div>` +
-    panel("Assistente AI", assistantForm) +
-    `<div class="section-gap">${panel("Auto-apprendimento dal sito", knowledgePanel)}</div>` +
-    `<div class="section-gap provider-grid">${providers.map(channelCard).join("")}</div>` +
-    `<div class="section-gap">${panel("Prova l'assistente", playground)}</div>`
+    panel("Buffy, assistente operativo", `<div class="panel-body"><p class="subtitle">Legge clienti, progetti, preventivi, fatture, documenti, appuntamenti, note e ricevute. Può preparare modifiche da applicare con la tua conferma.</p><div class="actions"><button type="button" class="primary" data-action="agent-open">Apri Buffy</button></div></div>`) +
+    `<div class="section-gap">${integrationsPanel()}</div>` +
+    `<div class="section-gap provider-grid">${providers.map(channelCard).join("")}</div>`
   );
 }
 function bindView() {
@@ -1813,7 +1832,7 @@ document.addEventListener("click", async (e) => {
     if (a === "invoice-issued") return await fiscalWizard(id);
     if (a === "fiscal-settings") {
       $("#modal").close();
-      location.hash = "settings";
+      window.dispatchEvent(new CustomEvent("buffy:open", { detail: { prompt: "Aiutami a completare i dati fiscali dell'azienda." } }));
       return;
     }
     if (a === "invoice-paid")
@@ -1935,15 +1954,18 @@ async function booking() {
     }
   };
 }
+window.crmRefresh = refresh;
+window.crmToast = toast;
 (async () => {
   try {
     if (location.pathname.startsWith("/book/")) return await booking();
     const qs = new URLSearchParams(location.search);
-    if (qs.get("view") === "settings") location.hash = "#settings";
+    if (qs.get("view") === "settings") history.replaceState(null, "", "#dashboard");
+    if (qs.get("view") === "channels") history.replaceState(null, "", "#channels");
     if (qs.get("linked") === "google")
       pendingToast = "Google collegato: ora puoi sincronizzare il calendario.";
     if ([...qs.keys()].length)
-      history.replaceState(null, "", location.pathname);
+      history.replaceState(null, "", location.pathname + location.hash);
     const s = await api("/api/session");
     if (!s.authenticated) return auth(s.setup);
     await refresh();

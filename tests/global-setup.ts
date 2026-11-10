@@ -67,7 +67,10 @@ function applyMigrations(url: string): void {
     encoding: "utf8",
     maxBuffer: 32 * 1024 * 1024,
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, DATABASE_URL: url },
+    // prisma7.config.ts preferisce DIRECT_URL. Senza questo override le
+    // migrazioni finirebbero sull'endpoint diretto (quello di .env) invece che
+    // sul database della run, che resterebbe vuoto.
+    env: { ...process.env, DATABASE_URL: url, DIRECT_URL: url },
   });
 }
 
