@@ -92,7 +92,7 @@ def home() -> None:
     d.rectangle([M, 540, W - M, 542], fill=(195, 204, 219))
     f_small = font("regular", 19)
     d.text((M, 558), "Gestionali · CRM · Automazioni · Web app", font=f_small, fill=muted)
-    right = "realindi.it"
+    right = "realindi.vercel.app"
     d.text((W - M - f_small.getlength(right), 558), right, font=f_small, fill=muted)
 
     img.save(os.path.join(OUT, "home.png"), optimize=True)
@@ -119,7 +119,7 @@ def bio() -> None:
     d.rectangle([M, 540, W - M, 542], fill=(58, 63, 74))
     f_small = font("regular", 19)
     d.text((M, 558), "info@realindi.it", font=f_small, fill=(140, 146, 158))
-    right = "realindi.it/bio"
+    right = "realindi.vercel.app/bio"
     d.text((W - M - f_small.getlength(right), 558), right, font=f_small, fill=(140, 146, 158))
 
     img.save(os.path.join(OUT, "bio.png"), optimize=True)

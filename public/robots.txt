@@ -12,4 +12,4 @@ Disallow: /book/
 Disallow: /api/
 
 # Le pagine dei casi studio sono elencate in /lavori/<slug>.
-Sitemap: https://realindi.it/sitemap.xml
+Sitemap: https://realindi.vercel.app/sitemap.xml
