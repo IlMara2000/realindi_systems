@@ -819,9 +819,20 @@ html::-webkit-scrollbar-corner {
   gap: 1.4rem;
 }
 
-@media (min-width: 760px) {
+/* Scala delle card: una colonna sul telefono, due quando c'è spazio per due
+   copertine leggibili, tre da lì in su e non oltre. Il tetto a tre è voluto:
+   con cinque casi studio, una quarta colonna lascerebbe una card sola
+   sull'ultima riga. minmax(0, 1fr) evita che una parola lunga allarghi la
+   colonna e sfondi il contenitore. */
+@media (min-width: 34rem) {
   .cards {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 60rem) {
+  .cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -857,6 +868,64 @@ html::-webkit-scrollbar-corner {
   margin-bottom: 0;
   color: var(--muted);
   font-size: 0.95rem;
+}
+
+/* Card dei lavori con copertina e link al caso studio.
+   La cornice la dà la card, non il link: così il bordo arrotondato non lascia
+   fuori l'immagine e l'intera superficie resta cliccabile. */
+
+.card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.card-link {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 0 0 1.5rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.card-link:hover h3,
+.card-link:focus-visible h3 {
+  color: var(--accent-ink);
+}
+
+.card-media {
+  display: block;
+  width: 100%;
+  /* L'attributo height="672" dell'<img> vale come height: 672px e vincerebbe
+     sull'aspect-ratio: senza questo auto la copertina resta verticale e il
+     ritaglio si mangia i due terzi della larghezza. */
+  height: auto;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  margin-bottom: 1.1rem;
+  background: var(--shade);
+}
+
+.card .card-kicker,
+.card h3,
+.card p:last-child {
+  margin-left: 1.5rem;
+  margin-right: 1.5rem;
+}
+
+.card p:not(.card-kicker) {
+  margin-bottom: 0;
+}
+
+/* Social di «chi sono». La spaziatura sta qui e non negli attributi `style`,
+   che la Content-Security-Policy (style-src 'self') blocca: prima i margini
+   inline venivano rifiutati dal browser e le icone restavano attaccate. */
+.about-social {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
 }
 
 /* ------------------------------------------------------- blocco contatti */

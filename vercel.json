@@ -4,6 +4,24 @@
   "buildCommand": "npm run build",
   "outputDirectory": "public",
   "redirects": [
+    {
+      "source": "/(.*)",
+      "has": [{ "type": "host", "value": "realindi-systems.vercel.app" }],
+      "destination": "https://realindi.it/$1",
+      "permanent": true
+    },
+    {
+      "source": "/(.*)",
+      "has": [{ "type": "host", "value": "realindi.vercel.app" }],
+      "destination": "https://realindi.it/$1",
+      "permanent": true
+    },
+    {
+      "source": "/(.*)",
+      "has": [{ "type": "host", "value": "www.realindi.it" }],
+      "destination": "https://realindi.it/$1",
+      "permanent": true
+    },
     { "source": "/index.html", "destination": "/", "permanent": false },
     { "source": "/bio.html", "destination": "/bio", "permanent": false }
   ],
@@ -11,6 +29,7 @@
     { "source": "/api/(.*)", "destination": "/api?path=$1" },
     { "source": "/", "destination": "/api?page=home" },
     { "source": "/bio", "destination": "/api?page=bio" },
+    { "source": "/lavori/:slug", "destination": "/lavori/:slug.html" },
     { "source": "/app", "destination": "/app.html" },
     { "source": "/ricevute", "destination": "/ricevute.html" },
     { "source": "/book/:slug*", "destination": "/app.html" }

@@ -180,6 +180,9 @@ const MIME: Record<string, string> = {
   "limiti-assistente.js": "text/javascript; charset=utf-8",
   "style.css": "text/css; charset=utf-8",
   "site.css": "text/css; charset=utf-8",
+  "case.css": "text/css; charset=utf-8",
+  "robots.txt": "text/plain; charset=utf-8",
+  "sitemap.xml": "application/xml; charset=utf-8",
   "assets/logo-realindi.png": "image/png",
   "assets/favicon-32.png": "image/png",
   "assets/favicon-192.png": "image/png",
@@ -196,6 +199,9 @@ const STATIC_FILES = new Set([
   "/limiti-assistente.js",
   "/style.css",
   "/site.css",
+  "/case.css",
+  "/robots.txt",
+  "/sitemap.xml",
   "/assets/logo-realindi.png",
   "/assets/favicon-32.png",
   "/assets/favicon-192.png",
@@ -251,10 +257,31 @@ function serveStatic(path: string): HandlerResponse | null {
   let file: string | null = null;
   if (path === "/app" || path.startsWith("/book/")) file = "app.html";
   else if (STATIC_FILES.has(path)) file = path.slice(1);
+  // Copertine dei casi studio: percorso chiuso, nessun accesso fuori da qui.
+  else if (/^\/assets\/lavori\/[a-z0-9-]{2,64}\/cover\.(png|webp)$/.test(path)) file = path.slice(1);
+  // Immagini di condivisione della home e del link-in-bio.
+  else if (/^\/assets\/og\/(home|bio)\.png$/.test(path)) file = path.slice(1);
   if (!file) return null;
   try {
     const data = readFileSync(new URL(`../public/${file}`, import.meta.url));
-    return send(data, 200, MIME[file]);
+    const type = MIME[file] ?? (file.endsWith(".webp") ? "image/webp" : "image/png");
+    return send(data, 200, type);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Casi studio: una pagina statica per slug in `public/lavori/`. Lo slug è
+ * validato dall'espressione (niente punti, niente slash) e il file deve
+ * esistere: un percorso inventato risponde 404, non serve un elenco da tenere
+ * allineato a mano ogni volta che si aggiunge un lavoro.
+ */
+function serveCaseStudy(slug: string): HandlerResponse | null {
+  if (!/^[a-z0-9-]{2,64}$/.test(slug)) return null;
+  try {
+    const html = readFileSync(new URL(`../public/lavori/${slug}.html`, import.meta.url));
+    return send(html, 200, "text/html; charset=utf-8");
   } catch {
     return null;
   }
@@ -318,6 +345,10 @@ interface SiteWork {
   kicker: string;
   title: string;
   body: string;
+  /** Copertina della card: percorso interno o URL https. Vuoto = nessuna immagine. */
+  image: string;
+  /** Pagina del caso studio: percorso interno o URL https. Vuoto = card non cliccabile. */
+  href: string;
 }
 
 /** Tutti i dettagli modificabili della vetrina, in un unico record. */
@@ -460,6 +491,8 @@ function validateSiteContent(raw: unknown): SiteContent {
         kicker: siteText(item.kicker, 60, `Lavoro ${i + 1}, etichetta`),
         title: siteText(item.title, 100, `Lavoro ${i + 1}, titolo`),
         body: siteText(item.body, 600, `Lavoro ${i + 1}, descrizione`),
+        image: siteUrl(item.image, `Lavoro ${i + 1}, immagine`),
+        href: siteUrl(item.href, `Lavoro ${i + 1}, link`),
       })),
     },
     contacts: {
@@ -471,6 +504,19 @@ function validateSiteContent(raw: unknown): SiteContent {
     },
     footer: siteText(root.footer, 240, "Nota a piè di pagina"),
   };
+}
+
+/**
+ * Percorso interno o URL https, nient'altro. Questi valori finiscono in un
+ * `src` e in un `href` del browser: `javascript:` o `//altro-host` sarebbero
+ * eseguibili o ingannevoli, quindi si accetta solo ciò che è prevedibile.
+ */
+function siteUrl(value: unknown, label: string): string {
+  const url = siteText(value, 200, label);
+  if (!url) return "";
+  if (url.startsWith("/") && !url.startsWith("//")) return url;
+  if (/^https:\/\/[^\s]+$/i.test(url)) return url;
+  throw new Invalid(`${label}: usa un percorso interno (/…) o un indirizzo https.`);
 }
 
 function siteObjectList(value: unknown, maxItems: number, label: string): Record<string, unknown>[] {
@@ -516,6 +562,12 @@ async function handleGet(req: HandlerRequest): Promise<HandlerResponse> {
 
   if (path === "/") return serveEditablePage("index.html", await editorSession(token));
   if (path === "/bio") return serveEditablePage("bio.html", await editorSession(token));
+  if (path.startsWith("/lavori/")) {
+    const casePage = serveCaseStudy(path.slice("/lavori/".length));
+    // Uno slug sbagliato è una pagina che non esiste, non un invito ad accedere:
+    // senza questo, la richiesta cadeva nel controllo di sessione e rispondeva 401.
+    return casePage ?? sendError(404, "Pagina non trovata.");
+  }
 
   const staticResponse = serveStatic(path);
   if (staticResponse) return staticResponse;
@@ -709,6 +761,26 @@ async function handleGet(req: HandlerRequest): Promise<HandlerResponse> {
     ]);
   }
 
+  // Allegati dei messaggi: /api/messages/<id>/attachment
+  const msgAttachmentMatch = /^\/api\/messages\/(\d+)\/attachment$/.exec(path);
+  if (msgAttachmentMatch) {
+    if (!(await auth(token))) return sendError(401, "Accedi per continuare.");
+    const messageId = Number(msgAttachmentMatch[1]);
+    const attachment = await p.messageAttachment.findFirst({ where: { message_id: messageId } });
+    if (!attachment) throw new Invalid("Allegato non trovato.");
+    const message = await p.message.findUnique({ where: { id: messageId } });
+    if (!message) throw new Invalid("Messaggio non trovato.");
+    // Verifica che l'utente abbia accesso a questa conversazione
+    const conversation = await p.conversation.findUnique({ where: { id: message.conversation_id } });
+    if (!conversation) throw new Invalid("Conversazione non trovata.");
+    const channel = await p.channel.findUnique({ where: { id: conversation.channel_id } });
+    // Il titolare ha accesso a tutto
+    const encoded = encodeURIComponent(attachment.filename).replace(/['()*]/g, (ch) => "%" + ch.charCodeAt(0).toString(16).toUpperCase());
+    return send(Buffer.from(attachment.content), 200, attachment.mime_type, [
+      ["Content-Disposition", `attachment; filename*=UTF-8''${encoded}`],
+    ]);
+  }
+
   return sendError(404, "Risorsa non trovata.");
 }
 
@@ -846,6 +918,7 @@ async function receiveMetaWebhook(
         text: event.text,
         externalId: event.externalId,
         kind: event.kind,
+        media: event.media,
       });
     } catch (err) {
       console.error(`Webhook ${provider}:`, err);
@@ -874,14 +947,30 @@ async function receiveTwilioWebhook(req: HandlerRequest): Promise<HandlerRespons
 
   const from = normalizePhone(params.From ?? "");
   const body = params.Body ?? "";
-  if (from && body.trim()) {
+  // Twilio MMS support: NumMedia > 0 significa che ci sono allegati
+  const numMedia = Number(params.NumMedia ?? "0");
+  let media: { type: string; id: string; mime_type?: string; sha256?: string; filename?: string } | null = null;
+  if (numMedia > 0) {
+    // Prende il primo media
+    const mediaUrl = params["MediaUrl0"];
+    const mediaContentType = params["MediaContentType0"];
+    if (mediaUrl) {
+      media = {
+        type: mediaContentType?.startsWith("image/") ? "image" : mediaContentType?.startsWith("application/pdf") ? "document" : "media",
+        id: mediaUrl,
+        mime_type: mediaContentType,
+      };
+    }
+  }
+  if (from && (body.trim() || media)) {
     try {
       await ingestInbound({
         channel,
         contact: from,
         text: body,
         externalId: params.MessageSid,
-        kind: "text",
+        kind: media ? "media" : "text",
+        media,
       });
     } catch (err) {
       console.error("Webhook sms:", err);

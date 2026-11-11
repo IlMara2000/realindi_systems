@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fenix Suite — CRM immobiliare · REALINDI SYSTEMS</title>
+    <meta
+      name="description"
+      content="Gestionale immobiliare su misura: croscutto, immobili, clienti, censimento e agenda in un unico ambiente, con accessi differenziati per ruolo."
+    />
+    <link rel="canonical" href="https://realindi.it/lavori/fenix-suite" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="REALINDI SYSTEMS" />
+    <meta property="og:locale" content="it_IT" />
+    <meta property="og:url" content="https://realindi.it/lavori/fenix-suite" />
+    <meta property="og:title" content="Fenix Suite — CRM immobiliare" />
+    <meta
+      property="og:description"
+      content="Un gestionale immobiliare dove immobili, clienti, attività e documenti vivono nello stesso posto."
+    />
+    <meta property="og:image" content="https://realindi.it/assets/lavori/fenix-suite/cover.png" />
+    <meta property="og:image:width" content="1280" />
+    <meta property="og:image:height" content="672" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/assets/app-touch.png" />
+    <link rel="stylesheet" href="/site.css" />
+    <link rel="stylesheet" href="/case.css" />
+  </head>
+  <body class="page-case">
+    <a class="skip" href="#main">Vai al contenuto</a>
+
+    <header class="case-top">
+      <a class="case-brand" href="/">
+        <img class="logo-mark" src="/assets/logo-realindi.png" alt="" width="30" height="30" />
+        <span>REALINDI SYSTEMS</span>
+      </a>
+      <nav class="case-nav" aria-label="Navigazione">
+        <a href="/#lavori">Lavori</a>
+        <a class="case-cta" href="/#contatti">Parliamone</a>
+      </nav>
+    </header>
+
+    <main id="main" class="case">
+      <p class="label">Caso studio 01 / Immobiliare</p>
+      <h1>Fenix Suite</h1>
+      <p class="case-claim">
+        Un gestionale immobiliare dove le cose stanno finalmente nello stesso posto:
+        immobili, clienti, censimento, agenda e strumenti operativi.
+      </p>
+
+      <dl class="case-meta">
+        <div><dt>Settore</dt><dd>Immobiliare</dd></div>
+        <div><dt>Anno</dt><dd>2026</dd></div>
+        <div><dt>Ruolo</dt><dd>Progetto e sviluppo</dd></div>
+        <div><dt>Accesso</dt><dd>Riservato</dd></div>
+      </dl>
+
+      <figure class="case-cover">
+        <img
+          src="/assets/lavori/fenix-suite/cover.webp"
+          alt="Schermata di accesso di Fenix Suite, gestionale immobiliare, con accesso protetto da Supabase Auth"
+          width="1280"
+          height="672"
+          loading="eager"
+          decoding="async"
+        />
+        <figcaption>
+          La piattaforma è ad uso interno di un'agenzia: la demo in sola lettura si apre su richiesta, con dati di esempio.
+        </figcaption>
+      </figure>
+
+      <section class="case-section">
+        <h2>Il contesto</h2>
+        <p>
+          In agenzia lo stesso immobile vive in quattro posti diversi: il foglio di calcolo
+          con i dati catastali, il calendario degli appuntamenti, la cartella dei documenti
+          e la chat con il cliente. Ogni passaggio è una copia fatta a mano, e ogni copia
+          è un'occasione per sbagliare.
+        </p>
+        <p>
+          La richiesta non era "un software": era smettere di ricopiare. Per questo il
+          lavoro è partito dal censimento delle attività reali, non dalle schermate.
+        </p>
+      </section>
+
+      <section class="case-section">
+        <h2>Cosa ho fatto</h2>
+        <ul>
+          <li>Modello dati per immobili, clienti, attività e documenti, pensato per resistere alle eccezioni reali (un immobile con più proprietari, un cliente con più pratiche).</li>
+          <li>Autenticazione con Supabase Auth: la password non è mai memorizzata in chiaro dall'applicazione.</li>
+          <li>Accessi differenziati per ruolo, così chi lavora sulle pratiche non vede per forza tutto il resto.</li>
+          <li>Agenda e strumenti operativi collegati alla scheda dell'immobile, invece che in una pagina separata.</li>
+          <li>Informativa privacy, termini e note legali dentro il prodotto: un gestionale che tratta dati di persone deve spiegarli da solo.</li>
+        </ul>
+      </section>
+
+      <section class="case-section">
+        <h2>Com'è fatto</h2>
+        <p>
+          Next.js per l'interfaccia, Supabase Auth per l'identità, Postgres per i dati,
+          deploy su Vercel. Le credenziali restano fuori dal codice e le pagine legali sono
+          parte del progetto, non un allegato.
+        </p>
+      </section>
+
+      <section class="case-section">
+        <h2>Cosa è cambiato</h2>
+        <p>
+          Una sola scheda da aprire per sapere a che punto è una pratica, e un archivio
+          che non dipende dalla memoria di chi ha fatto la telefonata. Il valore non è
+          nella funzione in più: è nei passaggi che non si fanno più.
+        </p>
+      </section>
+
+      <nav class="case-next" aria-label="Altri casi studio">
+        <p>Altri lavori</p>
+        <ul>
+          <li><a href="/lavori/ecomuseo-delle-culture">Ecomuseo delle Culture</a></li>
+          <li><a href="/lavori/bleachwears">Bleachwears</a></li>
+          <li><a href="/lavori/tradulimba">TraduLimba</a></li>
+          <li><a href="/lavori/uttf">UTTF</a></li>
+        </ul>
+      </nav>
+    </main>
+
+    <footer class="footer">
+      <p class="footer-brand">© 2026 REALINDI SYSTEMS · Soluzioni digitali a problemi reali.</p>
+    </footer>
+  </body>
+</html>

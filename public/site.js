@@ -175,6 +175,8 @@
             ["kicker", "Etichetta piccola"],
             ["title", "Titolo"],
             ["body", "Descrizione", "textarea"],
+            ["image", "Immagine (es. /assets/lavori/uttf/cover.webp)"],
+            ["href", "Link al caso studio (es. /lavori/uttf)"],
           ],
         },
       ],
@@ -296,8 +298,54 @@
     h3.textContent = typeof item.title === "string" ? item.title : "";
     const p = document.createElement("p");
     p.textContent = typeof item.body === "string" ? item.body : "";
-    li.append(kicker, h3, p);
+
+    const image = typeof item.image === "string" ? item.image.trim() : "";
+    const href = typeof item.href === "string" ? item.href.trim() : "";
+
+    // Il contenitore è un link solo quando c'è una destinazione: così una card
+    // senza href resta un blocco di testo e non un collegamento vuoto.
+    const box = document.createElement(href ? "a" : "div");
+    if (href) {
+      box.className = "card-link";
+      box.setAttribute("href", href);
+    }
+
+    if (image) {
+      const media = document.createElement("img");
+      media.className = "card-media";
+      media.src = image;
+      // Decorativa: il titolo accanto dice già cosa mostra.
+      media.alt = "";
+      media.width = 1280;
+      media.height = 672;
+      media.loading = "lazy";
+      media.decoding = "async";
+      box.appendChild(media);
+    }
+
+    box.append(kicker, h3, p);
+    li.append(box);
     return li;
+  }
+
+  /**
+   * Le card dei lavori arrivano dai contenuti salvati, immagine e link
+   * compresi: il markup in pagina è solo la resa iniziale, non una base da
+   * cui recuperare i campi mancanti.
+   */
+  function renderWorks(items) {
+    const mount = document.querySelector('[data-list="works.items"]');
+    if (!mount) return;
+    const list = Array.isArray(items) ? items : [];
+
+    // Elenco svuotato dal titolare: si rispetta la scelta.
+    if (!list.length) {
+      mount.textContent = "";
+      return;
+    }
+
+    mount.textContent = "";
+    list.forEach((item) => mount.appendChild(workCard(item)));
   }
 
   function renderItems(name, items, build) {
@@ -337,7 +385,7 @@
       if (section && typeof section === "object") buildTitle(el, section);
     });
     renderItems("services.items", valueAt(content, "services.items"), serviceRow);
-    renderItems("works.items", valueAt(content, "works.items"), workCard);
+    renderWorks(valueAt(content, "works.items"));
     renderLines("about.paragraphs", valueAt(content, "about.paragraphs"), "p");
     renderLines("about.facts", valueAt(content, "about.facts"), "li");
     renderLines("contacts.paragraphs", valueAt(content, "contacts.paragraphs"), "p");
@@ -419,6 +467,8 @@
           kicker: plainText(card.querySelector(".card-kicker")),
           title: plainText(card.querySelector("h3")),
           body: plainText(card.querySelector("p:not(.card-kicker)")),
+          image: card.querySelector(".card-media")?.getAttribute("src") || "",
+          href: card.querySelector(".card-link")?.getAttribute("href") || "",
         })),
       },
       contacts: {

@@ -1,0 +1,15 @@
+# REALINDI SYSTEMS — robots.txt
+# Il sito pubblico è tutto indicizzabile. Le aree che richiedono una sessione
+# (gestionale, ricevute, prenotazione, API) non hanno contenuti da indicizzare:
+# escluderle evita che un crawler le scopra e le riprovi a vuoto.
+# robots.txt non è un controllo di accesso: la protezione vera resta lato server.
+
+User-agent: *
+Allow: /
+Disallow: /app
+Disallow: /ricevute
+Disallow: /book/
+Disallow: /api/
+
+# Le pagine dei casi studio sono elencate in /lavori/<slug>.
+Sitemap: https://realindi.it/sitemap.xml
