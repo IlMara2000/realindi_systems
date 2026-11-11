@@ -61,6 +61,15 @@
   box-shadow: var(--raised-sm);
 }
 
+/* `.case-nav a` è più specifica di `.case-cta` e le soffiava il colore: in tema
+   scuro il pulsante restava grigio chiaro su fondo quasi bianco (1,7:1, sotto
+   qualsiasi soglia di leggibilità). Qui il colore viene riaffermato con la
+   stessa specificità, hover compreso. */
+.case-nav a.case-cta,
+.case-nav a.case-cta:hover {
+  color: var(--surface);
+}
+
 .case {
   max-width: 68rem;
   margin: 0 auto;
@@ -93,9 +102,12 @@
   margin: 0 0 2rem;
 }
 
+/* 8rem e non 9: a 390px la riga interna è 302px, e con colonne da 144px più il
+   gap ne servono 304. Per due pixel la scheda restava su una colonna sola,
+   quattro righe di altezza. Con 128px entrano due colonne e l'altezza dimezza. */
 .case-meta {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
   gap: 1rem;
   margin: 0 0 2.4rem;
   padding: 1.2rem 1.4rem;
