@@ -3,7 +3,13 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
 import { startServer, type RunningServer } from "../scripts/dev-server.js";
 import { sql, makeClient, resetDb, type TestClient } from "./helpers.js";
-import { mergeRemote, isImportable, windowRange } from "../src/sync.js";
+import {
+  CONFLICT_THRESHOLD_MS,
+  decideConflict,
+  mergeRemote,
+  isImportable,
+  windowRange,
+} from "../src/sync.js";
 
 const KEY = "chiave-di-test-non-produzione";
 
@@ -81,6 +87,17 @@ function spyProviders(router: (call: Call) => Response | Promise<Response>): Cal
       body: typeof init.body === "string" ? init.body : "",
     };
     log.push(call);
+    // L'elenco dei calendari è infrastruttura del sync, non il caso in prova:
+    // risponde un solo calendario "primary". I test sul multi-calendario hanno
+    // un proprio spy che elenca più calendari.
+    if (url.includes("/users/me/calendarList")) {
+      return new Response(
+        JSON.stringify({
+          items: [{ id: "primary", summary: "Principale", accessRole: "owner", primary: true }],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
     if (url.includes("googleapis.com") || url.includes("icloud.com")) return router(call);
     return real(input, init);
   });
@@ -435,14 +452,18 @@ describe("POST /api/sync/calendar", () => {
     const links = await sql("SELECT source, external_id FROM event_links");
     expect(links).toEqual([{ source: "google", external_id: "g1" }]);
 
-    const state = await sql("SELECT token FROM sync_state WHERE provider = 'google'");
+    const state = await sql(
+      "SELECT token FROM sync_calendars WHERE provider = 'google' AND calendar_id = 'primary'",
+    );
     expect(state[0].token).toBe("tok-1");
   });
 
   it("410 GONE: riparte dal full sync senza syncToken", async () => {
     const c = await fresh();
     await seedGoogle();
-    await sql("INSERT INTO sync_state(provider, token) VALUES ('google', 'vecchio-token')");
+    await sql(
+      'INSERT INTO sync_calendars(provider, calendar_id, access_role, "primary", token) VALUES (\'google\', \'primary\', \'owner\', true, \'vecchio-token\')',
+    );
 
     const log = spyProviders((call) => {
       if (call.url.includes("syncToken=vecchio-token")) {
@@ -463,7 +484,9 @@ describe("POST /api/sync/calendar", () => {
     expect(listCalls[1].url).not.toContain("syncToken=");
     expect(listCalls[1].url).toContain("timeMin=");
 
-    const state = await sql("SELECT token FROM sync_state WHERE provider = 'google'");
+    const state = await sql(
+      "SELECT token FROM sync_calendars WHERE provider = 'google' AND calendar_id = 'primary'",
+    );
     expect(state[0].token).toBe("tok-2");
   });
 
@@ -491,6 +514,42 @@ describe("POST /api/sync/calendar", () => {
 
     const events = await sql("SELECT dirty FROM calendar_events");
     expect(events[0].dirty).toBe(true);
+  });
+
+  it("iCloud con credenziali revocate: il messaggio dice di ricollegare l'account", async () => {
+    const c = await fresh();
+    await seedApple();
+    await makeEvent(c, "Da spingere", "2026-11-11T09:00:00.000Z", "2026-11-11T10:00:00.000Z");
+
+    spyProviders(() => new Response("denied", { status: 401 }));
+
+    const r = await c.request("/api/sync/calendar", {});
+    expect(r.body.errors).toHaveLength(1);
+    expect(r.body.errors[0].source).toBe("icloud");
+    expect(r.body.errors[0].message).toContain("rifiutato le credenziali salvate");
+    expect(r.body.errors[0].message).toContain("revocata o scaduta");
+    expect(r.body.errors[0].message).toContain("l'interrogazione iniziale");
+    expect(JSON.stringify(r.body)).not.toContain("abcd-efgh-ijkl");
+  });
+
+  it("iCloud irraggiungibile: guasto di rete, mai scambiato per password", async () => {
+    const c = await fresh();
+    await seedApple();
+    await makeEvent(c, "Da spingere", "2026-11-11T09:00:00.000Z", "2026-11-11T10:00:00.000Z");
+
+    spyProviders(() => {
+      throw Object.assign(new TypeError("fetch failed"), {
+        cause: Object.assign(new Error("getaddrinfo ENOTFOUND p21-caldav.icloud.com"), {
+          code: "ENOTFOUND",
+        }),
+      });
+    });
+
+    const r = await c.request("/api/sync/calendar", {});
+    expect(r.body.errors).toHaveLength(1);
+    expect(r.body.errors[0].source).toBe("icloud");
+    expect(r.body.errors[0].message).toContain("non si risolve");
+    expect(r.body.errors[0].message).not.toContain("password");
   });
 
   it("caldav: PUT con If-Match quotato quando il legame ha l'etag", async () => {
@@ -528,5 +587,436 @@ describe("POST /api/sync/calendar", () => {
     expect(links).toHaveLength(1);
     expect(links[0].dirty).toBe(false);
     expect(links[0].etag).toBe("nuova-etag");
+  });
+
+  it("tutti i calendari: un syncToken per calendario e id che non collidono", async () => {
+    const c = await fresh();
+    await seedGoogle();
+
+    const lavoro = "lavoro@group.calendar.google.com";
+    const visti: string[] = [];
+    const real = globalThis.fetch;
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input: any, init: any = {}) => {
+      const url = String(input instanceof Request ? input.url : input);
+      const method = String(init.method ?? "GET").toUpperCase();
+      if (!url.includes("googleapis.com")) return real(input, init);
+      const json = (body: unknown): Response =>
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+
+      if (url.includes("/users/me/calendarList")) {
+        return json({
+          items: [
+            { id: "primary", summary: "Principale", accessRole: "owner", primary: true },
+            { id: lavoro, summary: "Lavoro", accessRole: "writer" },
+          ],
+        });
+      }
+
+      if (method === "GET" && url.includes("/events?")) {
+        visti.push(url);
+        const cal = url.includes(encodeURIComponent(lavoro)) ? lavoro : "primary";
+        const short = cal === "primary" ? "p" : "l";
+        const syncToken = new URL(url).searchParams.get("syncToken");
+        if (syncToken) return json({ items: [], nextSyncToken: syncToken });
+        return json({
+          items: [
+            {
+              id: `evt-${short}`,
+              summary: `Evento ${cal}`,
+              start: { dateTime: "2026-11-16T10:00:00Z" },
+              end: { dateTime: "2026-11-16T11:00:00Z" },
+              updated: "2026-11-10T08:00:00Z",
+              etag: `"e-${short}"`,
+              iCalUID: `uid-${short}@google`,
+            },
+          ],
+          nextSyncToken: `tok-${short}`,
+        });
+      }
+      return json({ items: [] });
+    });
+
+    const primo = await c.request("/api/sync/calendar", {});
+    expect(primo.status).toBe(200);
+    expect(primo.body.errors).toEqual([]);
+    expect(primo.body.imported).toBe(2);
+
+    // Due richieste distinte, una per calendario, entrambe full sync.
+    expect(visti).toHaveLength(2);
+    expect(visti.every((u) => !u.includes("syncToken="))).toBe(true);
+
+    const stato = await sql("SELECT calendar_id, token FROM sync_calendars ORDER BY calendar_id");
+    expect(stato).toEqual([
+      { calendar_id: lavoro, token: "tok-l" },
+      { calendar_id: "primary", token: "tok-p" },
+    ]);
+
+    const legami = await sql("SELECT calendar_id, external_id FROM event_links ORDER BY calendar_id");
+    expect(legami).toEqual([
+      { calendar_id: lavoro, external_id: "evt-l" },
+      { calendar_id: "primary", external_id: "evt-p" },
+    ]);
+
+    // Secondo giro: ogni calendario riparte dal proprio token, niente full sync.
+    visti.length = 0;
+    const secondo = await c.request("/api/sync/calendar", {});
+    expect(secondo.body.errors).toEqual([]);
+    expect(secondo.body.imported).toBe(0);
+    expect(visti).toHaveLength(2);
+    for (const url of visti) expect(url).toContain("syncToken=");
+  });
+
+  it("push: crea un canale per calendario solo con origine HTTPS", async () => {
+    const c = await fresh();
+    await seedGoogle();
+
+    const watch: Call[] = [];
+    spyProviders((call) => {
+      if (call.url.includes("/watch")) {
+        watch.push(call);
+        return new Response(
+          JSON.stringify({
+            resourceId: "res-1",
+            expiration: new Date(Date.now() + 5 * 86400_000).toISOString(),
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response(JSON.stringify({ items: [], nextSyncToken: "tok-0" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    // In locale l'origine è http: Google non potrebbe raggiungere il CRM.
+    await c.request("/api/sync/calendar", {});
+    expect(watch).toHaveLength(0);
+    expect(await sql("SELECT channel_id FROM sync_channels")).toHaveLength(0);
+
+    vi.stubEnv("APP_ORIGIN", "https://realindi-systems.vercel.app");
+    const r = await c.request("/api/sync/calendar", {});
+    expect(r.body.errors).toEqual([]);
+    expect(watch).toHaveLength(1);
+    expect(watch[0].url).toContain("/calendars/primary/events/watch");
+    expect(watch[0].body).toContain(
+      "https://realindi-systems.vercel.app/api/sync/google/push",
+    );
+
+    const righe = await sql("SELECT calendar_id, address, token, resource_id FROM sync_channels");
+    expect(righe).toHaveLength(1);
+    expect(righe[0].calendar_id).toBe("primary");
+    expect(righe[0].address).toBe("https://realindi-systems.vercel.app/api/sync/google/push");
+    expect(righe[0].resource_id).toBe("res-1");
+    expect(righe[0].token).toBeTruthy();
+
+    // Canale ancora valido: la sincronizzazione successiva non ne crea un altro.
+    await c.request("/api/sync/calendar", {});
+    expect(watch).toHaveLength(1);
+  });
+
+  it("push: un canale in scadenza viene fermato e sostituito", async () => {
+    const c = await fresh();
+    await seedGoogle();
+    vi.stubEnv("APP_ORIGIN", "https://realindi-systems.vercel.app");
+    await sql(
+      "INSERT INTO sync_channels(channel_id, provider, calendar_id, resource_id, address, token, expiration) VALUES ('vecchio', 'google', 'primary', 'res-vecchio', $1, 'tk', $2)",
+      [
+        "https://realindi-systems.vercel.app/api/sync/google/push",
+        String(Date.now() + 3600_000),
+      ],
+    );
+
+    const watch: Call[] = [];
+    const stop: Call[] = [];
+    spyProviders((call) => {
+      if (call.url.includes("/channels/stop")) {
+        stop.push(call);
+        return new Response(null, { status: 200 });
+      }
+      if (call.url.includes("/watch")) {
+        watch.push(call);
+        return new Response(
+          JSON.stringify({
+            resourceId: "res-2",
+            expiration: new Date(Date.now() + 5 * 86400_000).toISOString(),
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response(JSON.stringify({ items: [], nextSyncToken: "tok-0" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    const r = await c.request("/api/sync/calendar", {});
+    expect(r.body.errors).toEqual([]);
+    expect(stop).toHaveLength(1);
+    expect(watch).toHaveLength(1);
+
+    const righe = await sql("SELECT channel_id, resource_id FROM sync_channels");
+    expect(righe).toHaveLength(1);
+    expect(righe[0].channel_id).not.toBe("vecchio");
+    expect(righe[0].resource_id).toBe("res-2");
+  });
+
+  it("push: il webhook risincronizza solo il calendario del canale, senza sessione", async () => {
+    await fresh();
+    await seedGoogle();
+    await sql(
+      'INSERT INTO sync_calendars(provider, calendar_id, access_role, "primary", token) VALUES (\'google\', \'primary\', \'owner\', true, \'tok-vecchio\')',
+    );
+    await sql(
+      "INSERT INTO sync_channels(channel_id, provider, calendar_id, resource_id, address, token, expiration) VALUES ('ch-1', 'google', 'primary', 'res-1', 'https://realindi-systems.vercel.app/api/sync/google/push', 'tk-1', $1)",
+      [String(Date.now() + 86400_000)],
+    );
+
+    const log = spyProviders((call) => {
+      if (call.method === "GET" && call.url.includes("/events?")) {
+        return new Response(JSON.stringify({ items: [], nextSyncToken: "tok-nuovo" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ items: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    const headers = {
+      "x-goog-channel-id": "ch-1",
+      "x-goog-resource-id": "res-1",
+      "x-goog-resource-state": "exists",
+      "x-goog-channel-token": "tk-1",
+    };
+    const anon = makeClient(base);
+    const r = await anon.request("/api/sync/google/push", {}, { public: true, headers });
+    expect(r.status).toBe(200);
+
+    const liste = log.filter((x) => x.method === "GET" && x.url.includes("/events?"));
+    expect(liste).toHaveLength(1);
+    expect(liste[0].url).toContain("syncToken=tok-vecchio");
+
+    const stato = await sql("SELECT token FROM sync_calendars WHERE calendar_id = 'primary'");
+    expect(stato[0].token).toBe("tok-nuovo");
+
+    // Canale sconosciuto, risorsa diversa e token errato: nessun pull.
+    log.length = 0;
+    const ignoto = await anon.request("/api/sync/google/push", {}, {
+      public: true,
+      headers: { ...headers, "x-goog-channel-id": "ignoto" },
+    });
+    expect(ignoto.status).toBe(404);
+    const risorsa = await anon.request("/api/sync/google/push", {}, {
+      public: true,
+      headers: { ...headers, "x-goog-resource-id": "altra" },
+    });
+    expect(risorsa.status).toBe(404);
+    const tokenKo = await anon.request("/api/sync/google/push", {}, {
+      public: true,
+      headers: { ...headers, "x-goog-channel-token": "sbagliato" },
+    });
+    expect(tokenKo.status).toBe(403);
+    expect(log.filter((x) => x.method === "GET" && x.url.includes("/events?"))).toHaveLength(0);
+  });
+});
+
+describe("politica dei conflitti", () => {
+  it("latest_wins: oltre la soglia vince il più recente, dentro la soglia decide una persona", () => {
+    const local = { updated_at: 1_000_000 };
+    expect(
+      decideConflict(local, { updated_at: 1_000_000 + CONFLICT_THRESHOLD_MS - 1 }, "latest_wins"),
+    ).toBe("manual");
+    expect(
+      decideConflict(local, { updated_at: 1_000_000 + CONFLICT_THRESHOLD_MS }, "latest_wins"),
+    ).toBe("manual");
+    expect(
+      decideConflict(local, { updated_at: 1_000_000 + CONFLICT_THRESHOLD_MS + 1 }, "latest_wins"),
+    ).toBe("remote_wins");
+    expect(
+      decideConflict(local, { updated_at: 1_000_000 - CONFLICT_THRESHOLD_MS - 1 }, "latest_wins"),
+    ).toBe("local_wins");
+  });
+
+  it("le politiche esplicite scavalcano il confronto degli orari", () => {
+    const local = { updated_at: 1_000_000 };
+    expect(decideConflict(local, { updated_at: 9_999_999 }, "local_wins")).toBe("local_wins");
+    expect(decideConflict(local, { updated_at: 999 }, "remote_wins")).toBe("remote_wins");
+    expect(decideConflict(local, { updated_at: 9_999_999 }, "manual")).toBe("manual");
+  });
+
+  it("412 con remoto più recente di oltre un minuto: vince il remoto, nessun conflitto", async () => {
+    const c = await fresh();
+    await seedGoogle();
+    const id = await makeEvent(c, "Titolo locale", "2026-11-20T10:00:00.000Z", "2026-11-20T11:00:00.000Z");
+    await sql(
+      "INSERT INTO event_links(event_id, source, external_id, etag, dirty) VALUES ($1, 'google', 'g-evt-1', 'vecchia', false)",
+      [id],
+    );
+
+    const remoteUpdated = new Date(Date.now() + 10 * 60_000).toISOString();
+    spyProviders((call) => {
+      if (call.method === "PUT") return new Response("precondition", { status: 412 });
+      if (call.method === "GET" && call.url.includes("/events/")) {
+        return new Response(
+          JSON.stringify({
+            id: "g-evt-1",
+            summary: "Titolo remoto",
+            start: { dateTime: "2026-11-20T10:00:00Z" },
+            end: { dateTime: "2026-11-20T11:00:00Z" },
+            updated: remoteUpdated,
+            etag: '"e-remoto"',
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response(JSON.stringify({ items: [], nextSyncToken: "tok-0" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    const r = await c.request("/api/sync/calendar", {});
+    expect(r.body.errors).toEqual([]);
+    expect(r.body.conflicts).toBe(0);
+
+    const evento = await sql("SELECT title, dirty FROM calendar_events");
+    expect(evento[0].title).toBe("Titolo remoto");
+    expect(evento[0].dirty).toBe(false);
+    expect(await sql("SELECT id FROM sync_conflicts")).toHaveLength(0);
+  });
+
+  it("412 con remoto entro un minuto: conflitto registrato senza sovrascrivere, poi risolto in locale", async () => {
+    const c = await fresh();
+    await seedGoogle();
+    const id = await makeEvent(c, "Titolo locale", "2026-11-20T10:00:00.000Z", "2026-11-20T11:00:00.000Z");
+    await sql(
+      "INSERT INTO event_links(event_id, source, external_id, etag, dirty) VALUES ($1, 'google', 'g-evt-1', 'vecchia', false)",
+      [id],
+    );
+
+    // Il remoto è più recente di venti secondi: dentro la soglia di un minuto.
+    const remoteUpdated = new Date(Date.now() + 20_000).toISOString();
+    spyProviders((call) => {
+      if (call.method === "PUT") return new Response("precondition", { status: 412 });
+      if (call.method === "GET" && call.url.includes("/events/")) {
+        return new Response(
+          JSON.stringify({
+            id: "g-evt-1",
+            summary: "Titolo remoto",
+            start: { dateTime: "2026-11-20T10:00:00Z" },
+            end: { dateTime: "2026-11-20T11:00:00Z" },
+            updated: remoteUpdated,
+            etag: '"e-remoto"',
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response(JSON.stringify({ items: [], nextSyncToken: "tok-0" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    const r = await c.request("/api/sync/calendar", {});
+    expect(r.body.errors).toEqual([]);
+    expect(r.body.conflicts).toBe(1);
+
+    // Locale intatto e non più in coda: niente retry a ogni sync.
+    const evento = await sql("SELECT title, dirty FROM calendar_events");
+    expect(evento[0].title).toBe("Titolo locale");
+    expect(evento[0].dirty).toBe(false);
+
+    const conflitti = await sql("SELECT resolution, local_json, remote_json FROM sync_conflicts");
+    expect(conflitti).toHaveLength(1);
+    expect(conflitti[0].resolution).toBe("pending");
+    expect(JSON.parse(conflitti[0].local_json).title).toBe("Titolo locale");
+    expect(JSON.parse(conflitti[0].remote_json).title).toBe("Titolo remoto");
+
+    const elenco = await c.request("/api/sync/conflicts");
+    expect(elenco.status).toBe(200);
+    expect(elenco.body.conflicts).toHaveLength(1);
+    expect(elenco.body.conflicts[0].local.title).toBe("Titolo locale");
+    expect(elenco.body.conflicts[0].remote.title).toBe("Titolo remoto");
+    expect(JSON.stringify(elenco.body)).not.toContain("abcd-efgh-ijkl");
+
+    const risolto = await c.request("/api/sync/conflicts/resolve", {
+      id: elenco.body.conflicts[0].id,
+      resolution: "local",
+    });
+    expect(risolto.status).toBe(200);
+
+    const dopo = await sql("SELECT resolution FROM sync_conflicts");
+    expect(dopo[0].resolution).toBe("local_wins");
+    const eventoDopo = await sql("SELECT title, dirty FROM calendar_events");
+    expect(eventoDopo[0].title).toBe("Titolo locale");
+    expect(eventoDopo[0].dirty).toBe(true);
+    const legame = await sql("SELECT dirty FROM event_links");
+    expect(legame[0].dirty).toBe(true);
+  });
+
+  it("risoluzione in favore del remoto: l'evento prende la versione remota", async () => {
+    const c = await fresh();
+    await seedGoogle();
+    const id = await makeEvent(c, "Titolo locale", "2026-11-20T10:00:00.000Z", "2026-11-20T11:00:00.000Z");
+    await sql(
+      "INSERT INTO event_links(event_id, source, external_id, etag, dirty) VALUES ($1, 'google', 'g-evt-1', 'vecchia', false)",
+      [id],
+    );
+
+    const remoteUpdated = new Date(Date.now() + 20_000).toISOString();
+    spyProviders((call) => {
+      if (call.method === "PUT") return new Response("precondition", { status: 412 });
+      if (call.method === "GET" && call.url.includes("/events/")) {
+        return new Response(
+          JSON.stringify({
+            id: "g-evt-1",
+            summary: "Titolo remoto",
+            description: "Nota remota",
+            start: { dateTime: "2026-11-21T09:00:00Z" },
+            end: { dateTime: "2026-11-21T10:00:00Z" },
+            updated: remoteUpdated,
+            etag: '"e-remoto"',
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response(JSON.stringify({ items: [], nextSyncToken: "tok-0" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    const r = await c.request("/api/sync/calendar", {});
+    expect(r.body.conflicts).toBe(1);
+
+    const elenco = await c.request("/api/sync/conflicts");
+    const risolto = await c.request("/api/sync/conflicts/resolve", {
+      id: elenco.body.conflicts[0].id,
+      resolution: "remote",
+    });
+    expect(risolto.status).toBe(200);
+
+    const evento = await sql("SELECT title, description, start, dirty FROM calendar_events");
+    expect(evento[0].title).toBe("Titolo remoto");
+    expect(evento[0].description).toBe("Nota remota");
+    expect(evento[0].start).toBe("2026-11-21T09:00:00Z");
+    expect(evento[0].dirty).toBe(false);
+
+    const legame = await sql("SELECT etag, dirty FROM event_links");
+    expect(legame[0].etag).toBe("e-remoto");
+    expect(legame[0].dirty).toBe(false);
+
+    // Risolvere due volte lo stesso conflitto non è permesso.
+    const ancora = await c.request("/api/sync/conflicts/resolve", {
+      id: elenco.body.conflicts[0].id,
+      resolution: "remote",
+    });
+    expect(ancora.status).toBe(400);
   });
 });

@@ -171,6 +171,82 @@ let state,
   pendingToast = "",
   activeConversation = null,
   threadCache = null;
+// Riga fissa sotto il campo password: il link per creare la password per le app
+// serve prima di poterla inserire, non solo quando il valore è già sbagliato.
+const APPLE_PASSWORD_HINT =
+  '<p class="hint">Serve una password per le app, non quella dell\'ID Apple: ' +
+  '<a href="https://account.apple.com/account/manage" target="_blank" rel="noopener noreferrer">' +
+  "creala su account.apple.com</a> → Accesso e sicurezza → Password per le app.</p>";
+
+// Form di collegamento Apple: avviso sulla forma della password mentre si scrive,
+// conferma esplicita prima di inviare un valore che Apple rifiuterebbe.
+function bindAppleForm(formApple) {
+    const bottoneApple = $("[type=submit]", formApple);
+    const etichettaApple = "Salva collegamento Apple";
+    // Le password per le app sono xxxx-xxxx-xxxx-xxxx: se il valore non ha quella
+    // forma è quasi sempre la password dell'ID Apple, che Apple rifiuta.
+    const passwordApp = /^[a-z]{4}(-[a-z]{4}){3}$/;
+    const testoAvviso =
+      "Attenzione: una password per le app ha la forma xxxx-xxxx-xxxx-xxxx (16 lettere " +
+      "in quattro gruppi). Questa sembra la password dell'ID Apple e Apple la rifiuterà. " +
+      "Se non l'hai ancora creata, prima va attivata l'autenticazione a due fattori su " +
+      "account.apple.com.";
+    const avvisoPassword = () => {
+      let p = $(".apple-password-warning", formApple);
+      if (!p) {
+        p = document.createElement("p");
+        p.className = "hint apple-password-warning";
+        p.hidden = true;
+        $(".error", formApple).before(p);
+      }
+      return p;
+    };
+    const formaSbagliata = () => {
+      const valore = String($("[name=app_password]", formApple)?.value ?? "").trim();
+      return Boolean(valore) && !passwordApp.test(valore);
+    };
+    // Aggiornamento live: si aggancia all'input, non solo all'invio.
+    const aggiornaAvviso = () => {
+      const sbagliata = formaSbagliata();
+      const p = avvisoPassword();
+      p.hidden = !sbagliata;
+      p.textContent = sbagliata ? testoAvviso : "";
+      if (!sbagliata) {
+        delete formApple.dataset.confermaPassword;
+        bottoneApple.textContent = etichettaApple;
+      }
+    };
+    $("[name=app_password]", formApple)?.addEventListener("input", aggiornaAvviso);
+    formApple.onsubmit = async (e) => {
+      e.preventDefault();
+      const f = formApple;
+      const d = Object.fromEntries(new FormData(f));
+      const b = bottoneApple;
+      if (formaSbagliata() && f.dataset.confermaPassword !== "1") {
+        // L'avviso è già a schermo mentre scriveva: qui si chiede la conferma.
+        aggiornaAvviso();
+        avvisoPassword().textContent = testoAvviso + " Premi di nuovo per inviare comunque.";
+        f.dataset.confermaPassword = "1";
+        b.textContent = "Invia comunque";
+        return;
+      }
+      b.disabled = true;
+      $(".error", f).textContent = "";
+      try {
+        await api("/api/integrations/apple", d);
+        await refresh();
+        toast("Collegamento Apple salvato.");
+      } catch (err) {
+        $(".error", f).textContent = err.message;
+      } finally {
+        b.disabled = false;
+        b.textContent = etichettaApple;
+        // Un invio fallito non deve lasciare la conferma attiva per il tentativo dopo.
+        delete f.dataset.confermaPassword;
+      }
+    };
+}
+
 async function api(url, data) {
   const res = await fetch(url, {
     credentials: "same-origin",
@@ -923,7 +999,7 @@ function settingsView() {
     "google-connect",
     "",
     "primary",
-  )}</div><p class="hint">Ti verrà chiesto di autorizzare Calendar e Gmail (sola lettura per l'inbox). L'invio delle email avviene solo tramite Apple.</p></div>`;
+  )}</div><p class="hint">Ti verrà chiesto di autorizzare Calendar e i contatti (e Gmail, se attivi l'inbox). L'invio delle email avviene solo tramite Apple.</p></div>`;
   const appleBlock = `<div class="section-gap"><h3>Apple (iCloud)</h3><form id="apple-form" class="form-grid">${field(
     "Apple ID",
     "apple_id",
@@ -940,7 +1016,7 @@ function settingsView() {
         ? "Già salvata — per cambiarla inseriscine una nuova"
         : "xxxx-xxxx-xxxx-xxxx"
     }" autocomplete="new-password"`,
-  )}${field(
+  )}${APPLE_PASSWORD_HINT}${field(
     "Mittente email",
     "sender_email",
     "email",
@@ -950,7 +1026,7 @@ function settingsView() {
     integ.apple.connected
       ? `<div class="actions section-gap">${btn("Disconnetti Apple", "apple-disconnect", "", "secondary small danger")}</div>`
       : ""
-  }<p class="hint">Crea la password per le app su account.apple.com → Accesso e sicurezza. Serve per SMTP (invio) e IMAP (lettura) di iCloud; la password non viene mai riletta dal server.</p></div>`;
+  }<p class="hint">Serve per SMTP (invio) e IMAP (lettura) di iCloud; la password non viene mai riletta dal server.</p></div>`;
   return (
     title(
       "Un workspace che ti somiglia.",
@@ -1074,7 +1150,7 @@ function integrationsPanel() {
   );
   const appleBlock = panel(
     "Apple iCloud",
-    `<div class="panel-body"><form id="apple-form" class="form-grid">${field("Apple ID", "apple_id", "email", "", 'placeholder="nome@icloud.com" autocomplete="username"')}${field("Password specifica per le app", "app_password", "password", "", `placeholder="${appleOn ? "Già salvata — per cambiarla inseriscine una nuova" : "xxxx-xxxx-xxxx-xxxx"}" autocomplete="new-password"`)}${field("Mittente email", "sender_email", "email", integ.sender || s.email || "", 'placeholder="nome@icloud.com"')}<div class="error" role="alert"></div><div class="form-actions"><button class="primary" type="submit">Salva collegamento Apple</button></div></form>${appleOn ? `<div class="actions section-gap">${btn("Disconnetti Apple", "apple-disconnect", "", "secondary small danger")}</div>` : ""}<p class="hint">Crea la password per le app su account.apple.com → Accesso e sicurezza. Serve per SMTP (invio) e IMAP (lettura) di iCloud; la password non viene mai riletta dal server.</p></div>`,
+    `<div class="panel-body"><form id="apple-form" class="form-grid">${field("Apple ID", "apple_id", "email", "", 'placeholder="nome@icloud.com" autocomplete="username"')}${field("Password specifica per le app", "app_password", "password", "", `placeholder="${appleOn ? "Già salvata — per cambiarla inseriscine una nuova" : "xxxx-xxxx-xxxx-xxxx"}" autocomplete="new-password"`)}${APPLE_PASSWORD_HINT}${field("Mittente email", "sender_email", "email", integ.sender || s.email || "", 'placeholder="nome@icloud.com"')}<div class="error" role="alert"></div><div class="form-actions"><button class="primary" type="submit">Salva collegamento Apple</button></div></form>${appleOn ? `<div class="actions section-gap">${btn("Disconnetti Apple", "apple-disconnect", "", "secondary small danger")}</div>` : ""}<p class="hint">Serve per SMTP (invio) e IMAP (lettura) di iCloud; la password non viene mai riletta dal server.</p></div>`,
   );
   return panel(
     "Integrazioni",
@@ -1154,24 +1230,7 @@ function bindView() {
         b.disabled = false;
       }
     };
-  if ($("#apple-form"))
-    $("#apple-form").onsubmit = async (e) => {
-      e.preventDefault();
-      const f = e.target,
-        d = Object.fromEntries(new FormData(f));
-      const b = $("[type=submit]", f);
-      b.disabled = true;
-      $(".error", f).textContent = "";
-      try {
-        await api("/api/integrations/apple", d);
-        await refresh();
-        toast("Collegamento Apple salvato.");
-      } catch (err) {
-        $(".error", f).textContent = err.message;
-      } finally {
-        b.disabled = false;
-      }
-    };
+  if ($("#apple-form")) bindAppleForm($("#apple-form"));
   $$("form[data-channel]").forEach((form) => {
     form.onsubmit = async (e) => {
       e.preventDefault();
@@ -1954,6 +2013,7 @@ async function booking() {
     }
   };
 }
+window.crmBindAppleForm = bindAppleForm;
 window.crmRefresh = refresh;
 window.crmToast = toast;
 (async () => {

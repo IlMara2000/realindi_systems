@@ -7,7 +7,20 @@ import { prisma } from "./db.js";
 import { sealSecret } from "./crypto.js";
 import { Invalid } from "./util.js";
 
-const GOOGLE_SCOPES = "https://www.googleapis.com/auth/calendar.events openid email";
+// calendar.events basta per la sincronizzazione del calendario. gmail.readonly
+// serve all'inbox di src/email.ts ma è uno scope ristretto: su un'app non
+// verificata Google blocca il consenso, quindi si chiede solo con
+// GOOGLE_GMAIL_INBOX=1 e non deve impedire il calendario.
+const GOOGLE_CALENDAR_SCOPES =
+  "https://www.googleapis.com/auth/calendar.events " +
+  // People API: senza questo la sincronizzazione dei contatti risponde 403.
+  "https://www.googleapis.com/auth/contacts.readonly openid email";
+
+export function googleScopes(): string {
+  return process.env.GOOGLE_GMAIL_INBOX === "1"
+    ? `${GOOGLE_CALENDAR_SCOPES} https://www.googleapis.com/auth/gmail.readonly`
+    : GOOGLE_CALENDAR_SCOPES;
+}
 const STATE_TTL_MS = 10 * 60_000;
 
 export interface IntegrationStatus {
@@ -60,7 +73,7 @@ export async function googleConnectUrl(origin: string): Promise<string> {
     client_id: clientId,
     redirect_uri: `${origin}/api/integrations/google/callback`,
     response_type: "code",
-    scope: GOOGLE_SCOPES,
+    scope: googleScopes(),
     access_type: "offline",
     prompt: "consent",
     state: nonce,
@@ -133,6 +146,173 @@ export async function googleCallback(query: URLSearchParams, origin: string): Pr
   return true;
 }
 
+/** Le password per le app Apple hanno la forma xxxx-xxxx-xxxx-xxxx. */
+const APPLE_APP_PASSWORD = /^[a-z]{4}(-[a-z]{4}){3}$/;
+
+export type NetworkIssue = "dns" | "timeout" | "refused" | "tls" | "unreachable";
+
+/** Codice di rete: gli errori di `fetch` lo nascondono dentro `cause`. */
+export function networkCode(err: unknown): string {
+  let cur = err as { code?: unknown; cause?: unknown } | null | undefined;
+  for (let i = 0; i < 4 && cur; i++) {
+    if (typeof cur.code === "string" && cur.code) return cur.code;
+    cur = cur.cause as typeof cur;
+  }
+  return "";
+}
+
+/** Classifica un guasto di rete, così login e sincronizzazione lo descrivono uguale. */
+export function networkIssue(err: unknown): NetworkIssue | null {
+  const e = err as { code?: unknown; message?: unknown; responseText?: unknown } | null;
+  const code = networkCode(err);
+  const text = `${e?.code ?? ""} ${e?.message ?? ""} ${e?.responseText ?? ""}`;
+  if (code === "ENOTFOUND" || code === "EAI_AGAIN") return "dns";
+  if (
+    code === "ETIMEDOUT" ||
+    code === "ETIMEOUT" ||
+    code === "UND_ERR_CONNECT_TIMEOUT" ||
+    code === "NoConnection" ||
+    /timeout|timed out/i.test(text)
+  ) {
+    return "timeout";
+  }
+  if (
+    code === "ECONNREFUSED" ||
+    code === "ECONNRESET" ||
+    code === "EHOSTUNREACH" ||
+    code === "ECONNABORTED"
+  ) {
+    return "refused";
+  }
+  if (/CERT|SSL|TLS/i.test(code)) return "tls";
+  if (/fetch failed/i.test(text)) return "unreachable";
+  return null;
+}
+
+/** Errore HTTP di un servizio DAV Apple: porta con sé lo stato per spiegarlo. */
+export class AppleHttpError extends Error {
+  constructor(
+    readonly status: number,
+    readonly what: string,
+  ) {
+    super(`iCloud: ${what} (HTTP ${status})`);
+    this.name = "AppleHttpError";
+  }
+}
+
+/**
+ * Messaggio per un errore Apple che arriva durante la sincronizzazione di
+ * calendario o contatti (DAV): credenziali revocate, limiti, disservizi e
+ * guasti di rete non devono mai confondersi fra loro né con un errore locale.
+ */
+export function appleSyncMessage(err: unknown): string {
+  if (err instanceof AppleHttpError) {
+    const { status, what } = err;
+    if (status === 401 || status === 403 || status === 407) {
+      return (
+        `iCloud ha rifiutato le credenziali salvate (HTTP ${status} durante ${what}): ` +
+        "la password per le app è stata revocata o scaduta. Ricollega l'account da " +
+        "Impostazioni → Integrazioni."
+      );
+    }
+    if (status === 429) {
+      return `iCloud ha chiesto di rallentare (HTTP 429 durante ${what}): troppe richieste, riprova fra qualche minuto.`;
+    }
+    if (status >= 500) {
+      return `iCloud non sta rispondendo (HTTP ${status} durante ${what}): è un disservizio loro, riprova più tardi.`;
+    }
+    return `iCloud ha rifiutato la richiesta (HTTP ${status} durante ${what}).`;
+  }
+  const issue = networkIssue(err);
+  if (issue === "dns") {
+    return "Il server iCloud non si risolve (DNS): controlla la connessione a internet.";
+  }
+  if (issue === "timeout") {
+    return (
+      "Il server iCloud non ha risposto in tempo: rete lenta, oppure firewall o proxy " +
+      "che blocca la porta 443."
+    );
+  }
+  if (issue === "refused") {
+    return "Connessione al server iCloud rifiutata o interrotta: probabile firewall, proxy o VPN.";
+  }
+  if (issue === "tls") {
+    return "Handshake TLS con il server iCloud fallito: certificato non valido o proxy che intercetta la connessione.";
+  }
+  if (issue === "unreachable") {
+    return "Server iCloud irraggiungibile: la connessione è fallita senza dettagli.";
+  }
+  const detail = (err instanceof Error ? err.message : String(err)).replace(/\s+/g, " ").slice(0, 160);
+  return detail || "Sincronizzazione iCloud non riuscita.";
+}
+
+/**
+ * Traduce l'errore di imapflow in una frase che dice cosa fare. L'ordine conta:
+ * prima le credenziali rifiutate (distinguendo la password dell'ID Apple dalla
+ * password per le app), poi i guasti di rete, che non vanno mai presentati
+ * come "password sbagliata".
+ */
+export function appleError(err: unknown, appPassword: string): Invalid {
+  const e = err as {
+    authenticationFailed?: boolean;
+    serverResponseCode?: string;
+    responseText?: string;
+    response?: string;
+    code?: string;
+    message?: string;
+  } | null;
+  const code = String(e?.code ?? "");
+  const text = `${e?.responseText ?? ""} ${e?.response ?? ""} ${e?.message ?? ""}`;
+  const rejected =
+    e?.authenticationFailed === true ||
+    String(e?.serverResponseCode ?? "").toUpperCase() === "AUTHENTICATIONFAILED" ||
+    /authenticationfailed|invalid credentials|invalid login|invalid username or password/i.test(text);
+
+  if (rejected) {
+    if (!APPLE_APP_PASSWORD.test(appPassword)) {
+      return new Invalid(
+        "Apple ha rifiutato l'accesso: quella inserita non è una password per le app. " +
+          "Si genera su account.apple.com → Accesso e sicurezza → Password per le app e ha " +
+          "la forma xxxx-xxxx-xxxx-xxxx. Se la voce non compare, l'autenticazione a due " +
+          "fattori non è attiva sull'ID Apple e va attivata prima di poterla creare.",
+      );
+    }
+    return new Invalid(
+      "Apple ha rifiutato la password per le app: revocata, scaduta o copiata male. " +
+        "Generane una nuova su account.apple.com → Accesso e sicurezza → Password per le app.",
+    );
+  }
+
+  const issue = networkIssue(err);
+  if (issue === "dns") {
+    return new Invalid(
+      "imap.mail.me.com non si risolve (DNS): controlla la connessione a internet.",
+    );
+  }
+  if (issue === "timeout") {
+    return new Invalid(
+      "imap.mail.me.com non ha risposto entro 10 secondi: rete lenta, oppure porta 993 " +
+        "bloccata da firewall o proxy.",
+    );
+  }
+  if (issue === "refused") {
+    return new Invalid(
+      "Connessione a imap.mail.me.com rifiutata o interrotta sulla porta 993: probabile " +
+        "firewall, proxy o VPN che la blocca.",
+    );
+  }
+  if (issue === "tls") {
+    return new Invalid(
+      "Handshake TLS con imap.mail.me.com fallito: certificato non valido o proxy che " +
+        "intercetta la connessione.",
+    );
+  }
+  const detail = (e?.message ?? (err instanceof Error ? err.message : String(err)))
+    .replace(/\s+/g, " ")
+    .slice(0, 160);
+  return new Invalid(`Collegamento a imap.mail.me.com non riuscito: ${detail}`);
+}
+
 /** Verifica le credenziali Apple con un login IMAP reale (timeout corto). */
 export async function verifyApple(appleId: string, appPassword: string): Promise<void> {
   const client = new ImapFlow({
@@ -147,6 +327,8 @@ export async function verifyApple(appleId: string, appPassword: string): Promise
   });
   try {
     await client.connect();
+  } catch (err) {
+    throw appleError(err, appPassword);
   } finally {
     try {
       await client.logout();

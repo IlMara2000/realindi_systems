@@ -177,25 +177,131 @@ model CalendarEvent {
 }
 
 // Un evento può vivere su più provider: ogni riga è il legame con uno di essi.
+// `calendar_id` fa parte dell'identità: gli id evento di Google sono univoci
+// solo dentro un calendario, quindi due calendari possono ripetere lo stesso id.
 model EventLink {
   id          Int     @id @default(autoincrement())
   event_id    Int
   source      String
+  calendar_id String  @default("primary")
   external_id String
   etag        String?
   dirty       Boolean @default(true)
   deleted_at  String?
-  @@unique([source, external_id])
+  @@unique([source, calendar_id, external_id])
   @@map("event_links")
 }
 
-// Stato di sincronizzazione per provider (syncToken Google, path CalDAV).
+// Stato di sincronizzazione per provider (path CalDAV iCloud).
 model SyncState {
   provider      String  @id
   token         String?
   calendar_path String?
   last_sync_at  String?
   @@map("sync_state")
+}
+
+// Conflitto fra la versione locale e quella remota di un evento: si conservano
+// entrambe, così nessuna delle due va persa quando la scelta è ambigua o
+// rimandata. `resolution` vale pending finché qualcuno non decide.
+model SyncConflict {
+  id          Int     @id @default(autoincrement())
+  link_id     Int
+  source      String
+  entity_kind String  @default("event")
+  entity_id   Int
+  local_json  String
+  remote_json String
+  detected_at String  @default(dbgenerated("to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD HH24:MI:SS')"))
+  resolution  String  @default("pending")
+  resolved_at String?
+  resolved_by String  @default("")
+  @@index([resolution, detected_at])
+  @@index([link_id])
+  @@map("sync_conflicts")
+}
+
+// Rubrica locale: contatti importati da iCloud (CardDAV) e Google (People API).
+// Un contatto può arrivare da più provider: le identità remote stanno nei
+// contact_links, mentre la deduplica unisce per email e poi per telefono, così
+// la stessa persona non compare due volte. `client_id` è il legame al cliente
+// del CRM, assegnato solo quando email o telefono coincidono.
+model Contact {
+  id           Int           @id @default(autoincrement())
+  client_id    Int?
+  display_name String        @default("")
+  given_name   String        @default("")
+  family_name  String        @default("")
+  org          String        @default("")
+  job_title    String        @default("")
+  emails       String        @default("[]")
+  phones       String        @default("[]")
+  notes        String        @default("")
+  updated_at   BigInt
+  deleted_at   String?
+  created_at   String        @default(dbgenerated("to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD HH24:MI:SS')"))
+  @@index([deleted_at])
+  @@index([display_name])
+  @@index([client_id])
+  @@map("contacts")
+}
+
+// Identità del contatto su un provider: href della .vcf (CardDAV) o
+// resourceName "people/…" (People API), con l'ETag per gli aggiornamenti.
+model ContactLink {
+  id          Int     @id @default(autoincrement())
+  contact_id  Int
+  source      String // "icloud" | "google"
+  addressbook String  @default("")
+  remote_id   String
+  etag        String?
+  deleted_at  String?
+  @@unique([source, remote_id])
+  @@index([contact_id])
+  @@map("contact_links")
+}
+
+// Stato per rubrica remota: ctag su CardDAV, syncToken su People API.
+model SyncAddressbook {
+  provider     String
+  addressbook  String
+  name         String  @default("")
+  ctag         String?
+  sync_token   String?
+  last_sync_at String?
+  @@id([provider, addressbook])
+  @@map("sync_addressbooks")
+}
+
+// Canale di notifica Google (events.watch): uno per calendario. Google chiama
+// l'URL con un POST vuoto; il canale dice quale calendario è cambiato. I canali
+// scadono (al massimo pochi giorni) e vengono rinnovati prima della scadenza.
+model SyncChannel {
+  channel_id  String @id
+  provider    String
+  calendar_id String
+  resource_id String @default("")
+  address     String
+  token       String @default("")
+  expiration  BigInt
+  created_at  String @default(dbgenerated("to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD HH24:MI:SS')"))
+  @@index([provider, calendar_id])
+  @@index([expiration])
+  @@map("sync_channels")
+}
+
+// Un calendario remoto sincronizzato. Google emette un syncToken PER
+// calendario: lo stato vive qui, non più in sync_state.token.
+model SyncCalendar {
+  provider     String  // "google"
+  calendar_id  String  // id Google, oppure href per le collezioni CalDAV
+  name         String  @default("")
+  access_role  String  @default("")
+  primary      Boolean @default(false)
+  token        String?
+  last_sync_at String?
+  @@id([provider, calendar_id])
+  @@map("sync_calendars")
 }
 
 // ------------------------------------------------------------------ canali
@@ -233,6 +339,7 @@ model Conversation {
   created_at      String    @default(dbgenerated("to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD HH24:MI:SS')"))
   channel         Channel   @relation(fields: [channel_id], references: [id])
   messages        Message[]
+  attachments     MessageAttachment[]
   @@unique([channel_id, contact])
   @@map("conversations")
 }
@@ -247,7 +354,12 @@ model Message {
   status          String       @default("sent")
   error           String       @default("")
   created_at      String       @default(dbgenerated("to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD HH24:MI:SS')"))
-  conversation    Conversation @relation(fields: [conversation_id], references: [id])
+  // Media allegati (foto, PDF, audio): tipo e riferimento al file salvato.
+  media_type         String?
+  media_storage_name String?
+  media_url          String?
+  conversation       Conversation           @relation(fields: [conversation_id], references: [id])
+  attachments        MessageAttachment[]
   @@unique([conversation_id, external_id])
   @@index([conversation_id, id])
   @@map("messages")
@@ -302,4 +414,23 @@ model AssistantHit {
   @@index([key, at])
   @@index([at])
   @@map("assistant_hits")
+}
+
+// Allegati ai messaggi di conversazione (foto, PDF, audio, documenti).
+// I contenuti vivono nel database come BLOB, come i documenti esistenti.
+model MessageAttachment {
+  id              Int      @id @default(autoincrement())
+  message_id      Int
+  conversation_id Int
+  filename        String
+  mime_type       String
+  size            Int
+  sha256          String
+  storage_name    String   @unique
+  content         Bytes
+  created_at      String   @default(dbgenerated("to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD HH24:MI:SS')"))
+  message         Message  @relation(fields: [message_id], references: [id], onDelete: Cascade)
+  conversation    Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+  @@index([conversation_id])
+  @@map("message_attachments")
 }

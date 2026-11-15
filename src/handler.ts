@@ -52,7 +52,8 @@ import {
   saveApple,
   removeApple,
 } from "./integrations.js";
-import { runSync } from "./sync.js";
+import { handleGooglePush, listConflicts, resolveConflictById, runSync } from "./sync.js";
+import { syncContacts } from "./contacts.js";
 import { cancelReceipt, emitReceipt, listReceipts, validateReceiptFields } from "./receipts.js";
 import { sendMail, validateOutgoing, readInbox } from "./email.js";
 import {
@@ -292,11 +293,37 @@ function parseQuery(raw: string): URLSearchParams {
 }
 
 // ---------------------------------------------------------------------- bio
+function isLoopbackHost(host: string): boolean {
+  const name = host.replace(/:\d+$/, "").toLowerCase();
+  return name === "localhost" || name === "127.0.0.1" || name === "[::1]" || name === "::1";
+}
+
 // Origine della richiesta (dietro il proxy di Vercel) per i redirect OAuth.
+// In locale il dev server non manda x-forwarded-proto e non c'è TLS: dedurre
+// https produrrebbe un redirect_uri che Google rifiuta (redirect_uri_mismatch).
 function originOf(req: HandlerRequest): string {
-  const proto = (req.headers["x-forwarded-proto"] ?? "https").split(",")[0].trim();
+  const forwarded = String(req.headers["x-forwarded-proto"] ?? "").split(",")[0].trim();
   const host = req.headers["host"] ?? "localhost";
+  const proto = forwarded || (isLoopbackHost(host) ? "http" : "https");
   return `${proto}://${host}`;
+}
+
+// Origine usata per il redirect OAuth. Su Vercel l'host cambia fra produzione,
+// dominio personalizzato e preview: il redirect_uri deve restare quello
+// registrato nella Console Google, quindi APP_ORIGIN lo fissa. Deve essere
+// identica nella richiesta di consenso e nello scambio del codice, altrimenti
+// Google rifiuta lo scambio.
+function oauthOrigin(req: HandlerRequest): string {
+  const configured = (process.env.APP_ORIGIN ?? "").trim().replace(/\/+$/, "");
+  if (configured) {
+    try {
+      const url = new URL(configured);
+      if (url.protocol === "https:" || url.protocol === "http:") return url.origin;
+    } catch {
+      // valore non valido: si usa l'host della richiesta
+    }
+  }
+  return originOf(req);
 }
 
 // Origine vista dal browser: in locale il proxy non manda x-forwarded-proto e
@@ -652,16 +679,18 @@ async function handleGet(req: HandlerRequest): Promise<HandlerResponse> {
 
   if (path === "/api/integrations/status") return send(await integrationStatus());
 
+  if (path === "/api/sync/conflicts") return send({ conflicts: await listConflicts() });
+
   if (path === "/api/email/inbox") return send(await readInbox());
 
   if (path === "/api/integrations/google/connect") {
-    return send({ url: await googleConnectUrl(originOf(req)) });
+    return send({ url: await googleConnectUrl(oauthOrigin(req)) });
   }
 
   if (path === "/api/integrations/google/callback") {
     const q = parseQuery(req.query);
     if (q.get("error")) return sendError(403, "Autorizzazione Google annullata.");
-    const saved = await googleCallback(q, originOf(req));
+    const saved = await googleCallback(q, oauthOrigin(req));
     if (!saved) return sendError(403, "Stato OAuth non valido.");
     return send("", 302, "text/plain; charset=utf-8", [["Location", "/app?view=channels&linked=google"]]);
   }
@@ -983,6 +1012,12 @@ async function handleWebhookPost(req: HandlerRequest): Promise<HandlerResponse |
   if (req.path === "/api/webhooks/whatsapp") return receiveMetaWebhook(req, "whatsapp");
   if (req.path === "/api/webhooks/instagram") return receiveMetaWebhook(req, "instagram");
   if (req.path === "/api/webhooks/sms") return receiveTwilioWebhook(req);
+  // Notifica Google Calendar: corpo vuoto, nessuna sessione, identità negli
+  // header X-Goog-* verificati contro il canale salvato.
+  if (req.path === "/api/sync/google/push") {
+    const result = await handleGooglePush(req.headers);
+    return send("", result.status);
+  }
   return null;
 }
 
@@ -1334,7 +1369,17 @@ async function handlePost(req: HandlerRequest): Promise<HandlerResponse> {
   }
 
   if (path === "/api/sync/calendar") {
-    return send(await runSync());
+    return send(await runSync({ origin: oauthOrigin(req) }));
+  }
+
+  if (path === "/api/sync/contacts") {
+    return send(await syncContacts());
+  }
+
+  if (path === "/api/sync/conflicts/resolve") {
+    const resolution = d.resolution === "remote" ? "remote" : "local";
+    await resolveConflictById(intId(d.id), resolution, "owner");
+    return send({ ok: true });
   }
 
   if (path === "/api/email/send") {

@@ -1126,6 +1126,13 @@ textarea {
   line-height: 1.5;
   margin: 12px 0;
 }
+/* Avviso prima dell'invio della password Apple: non blocca, ma si nota.
+   Il colore del testo resta quello del tema, l'accento usa il rosso esistente. */
+.hint.apple-password-warning {
+  border-left: 2px solid var(--red);
+  padding-left: 8px;
+  margin: 8px 0;
+}
 .settings-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

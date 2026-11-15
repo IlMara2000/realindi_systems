@@ -18,7 +18,7 @@ const DEFAULT_MESSAGE = "Ciao, che servizi offrite?";
 export interface ProbeConfig {
   base_url: string;
   model: string;
-  key: string;
+  key: string | null;
   message: string;
   timeout_ms?: number;
 }
@@ -47,14 +47,17 @@ export async function probeAiProvider(cfg: ProbeConfig): Promise<ProbeResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
 
+  // Quando il base_url contiene un URL token (/v1/t/<token>/...), il gateway
+  // FreeLLMAPI imposta automaticamente l'header Authorization: non serve una chiave.
+  const gatewayTokenPath = /\/v1\/t\//.test(cfg.base_url);
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (cfg.key && !gatewayTokenPath) headers.Authorization = `Bearer ${cfg.key}`;
+
   try {
     const res = await fetch(`${cfg.base_url.replace(/\/+$/, "")}/chat/completions`, {
       method: "POST",
       signal: controller.signal,
-      headers: {
-        Authorization: `Bearer ${cfg.key}`,
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify({
         model: cfg.model,
         messages: [
@@ -82,7 +85,7 @@ export async function probeAiProvider(cfg: ProbeConfig): Promise<ProbeResult> {
         latency_ms,
         model: cfg.model,
         reply: null,
-        error: redact(detail, cfg.key),
+        error: redact(detail, cfg.key ?? ""),
         usage: null,
       };
     }
@@ -105,7 +108,7 @@ export async function probeAiProvider(cfg: ProbeConfig): Promise<ProbeResult> {
       status: res.status,
       latency_ms,
       model: typeof body.model === "string" && body.model ? body.model : cfg.model,
-      reply: redact(content.trim(), cfg.key),
+      reply: redact(content.trim(), cfg.key ?? ""),
       error: null,
       usage: body.usage ?? null,
     };
@@ -174,10 +177,10 @@ async function resolveProvider(): Promise<Provider> {
   }
 
   if (!key) {
-    const envKey = (process.env.AI_API_KEY || process.env.OPENAI_API_KEY || "").trim();
+    const envKey = (process.env.FREELLMAPI_API_KEY || process.env.AI_API_KEY || process.env.OPENAI_API_KEY || "").trim();
     if (envKey) {
       key = envKey;
-      key_source = "variabile d'ambiente (AI_API_KEY/OPENAI_API_KEY)";
+      key_source = "variabile d'ambiente (FREELLMAPI_API_KEY/AI_API_KEY/OPENAI_API_KEY)";
     }
   }
 
@@ -186,16 +189,16 @@ async function resolveProvider(): Promise<Provider> {
 
 function hintFor(result: ProbeResult): string {
   if (result.status === 401 || result.status === 403) {
-    return "la chiave non è valida o è stata revocata: creane una da Account → Developer API (https://freebuff.com/account/api) e aggiornala nel CRM o in AI_API_KEY.";
+    return "la chiave non è valida o è stata revocata: controlla FREELLMAPI_API_KEY (o AI_API_KEY) e i provider configurati nel gateway (freellmapi keys list).";
   }
   if (result.status === 429) {
-    return "limite di richieste o credito esaurito sul provider: riprova più tardi o controlla il piano su freebuff.com/account/api.";
+    return "limite di richieste o quota esaurita sul provider/gateway: riprova più tardi o controlla i crediti dei provider configurati.";
   }
   if (result.status === 404) {
-    return "endpoint non trovato: controlla AI_BASE_URL, deve essere la base senza /chat/completions.";
+    return "endpoint non trovato: controlla AI_BASE_URL, deve essere la base senza /chat/completions (es. http://127.0.0.1:31415/v1).";
   }
   if (result.status === 0) {
-    return "nessuna risposta di rete: controlla la connessione e che AI_BASE_URL sia raggiungibile da questa macchina.";
+    return "nessuna risposta di rete: controlla la connessione e che AI_BASE_URL sia raggiungibile da questa macchina (gateway FreeLLMAPI avviato?).";
   }
   return "il provider ha rifiutato la richiesta: il dettaglio è nella risposta qui sopra.";
 }
@@ -213,12 +216,15 @@ export async function main(argv: string[]): Promise<number> {
 
   if (provider.notice) console.error(`Nota: ${provider.notice}`);
 
-  if (!provider.key) {
+  // Quando il base_url contiene un URL token (/v1/t/<token>/...), il gateway
+  // FreeLLMAPI imposta automaticamente l'header Authorization: non serve una chiave.
+  const gatewayTokenPath = /\/v1\/t\//.test(provider.base_url);
+  if (!provider.key && !gatewayTokenPath) {
     console.error(
       [
         "Nessuna chiave AI configurata.",
-        "Salvala in Canali & AI → Assistente, oppure imposta AI_API_KEY nel file .env",
-        "(la chiave si crea da Account → Developer API: https://freebuff.com/account/api).",
+        "Imposta FREELLMAPI_API_KEY nel file .env o su Vercel (Secret), oppure salva la chiave in Canali & AI → Assistente.",
+        "Il gateway FreeLLMAPI va avviato localmente (freellmapi launch) e i provider vanno aggiunti con 'freellmapi keys add <platform>'.",
       ].join("\n"),
     );
     return 2;
@@ -227,7 +233,7 @@ export async function main(argv: string[]): Promise<number> {
   console.log("Diagnostica Developer API");
   console.log(`Provider: ${provider.base_url}`);
   console.log(`Modello: ${provider.model}`);
-  console.log(`Chiave: ${provider.key_source} · ${provider.key.length} caratteri`);
+  console.log(`Chiave: ${gatewayTokenPath ? "URL token nel path (gateway imposta l'autenticazione)" : `${provider.key_source} · ${(provider.key ?? "").length} caratteri`}`);
   console.log(`Messaggio: "${message}"`);
   console.log("");
 

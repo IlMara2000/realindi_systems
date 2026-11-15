@@ -177,8 +177,8 @@ export function sha256Hex(value: string): string {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
 
-export function sha256Bytes(value: Buffer): string {
-  return crypto.createHash("sha256").update(value).digest("hex");
+export function sha256Bytes(value: Buffer | Uint8Array): string {
+  return crypto.createHash("sha256").update(Buffer.from(value)).digest("hex");
 }
 
 /** pbkdf2_hmac('sha256', password, salt_hex, 300000).hex() — compatibile con gli hash esistenti. */

@@ -353,19 +353,67 @@ export async function verifyChannel(channel: ChannelRecord): Promise<{ ok: boole
   return { ok, detail, error };
 }
 
-/** Invia un messaggio di testo e restituisce l'identificativo esterno. */
+interface SendMessageOptions {
+  text?: string;
+  media?: {
+    type: "image" | "document" | "audio" | "video";
+    url: string; // URL pubblico accessibile o data URL
+    filename?: string;
+    caption?: string;
+  };
+}
+
+/** Invia un messaggio (testo o media) e restituisce l'identificativo esterno. */
 export async function sendChannelMessage(
   channel: ChannelRecord,
   to: string,
-  text: string,
+  textOrOptions: string | SendMessageOptions,
 ): Promise<{ externalId: string; status: string }> {
   const creds = openCreds(channel);
-  const body = text.trim();
-  if (!body) throw new Invalid("Messaggio vuoto.");
+  const options = typeof textOrOptions === "string" ? { text: textOrOptions } : textOrOptions;
+  const hasText = options.text && options.text.trim().length > 0;
+  const hasMedia = !!options.media;
+  if (!hasText && !hasMedia) throw new Invalid("Messaggio vuoto.");
 
   if (channel.provider === "whatsapp") {
     const dest = normalizePhone(to).replace(/\D/g, "");
     if (!dest) throw new Invalid("Destinatario WhatsApp non valido.");
+    
+    if (hasMedia && options.media) {
+      // Invia media con eventuale caption
+      const mediaType = options.media.type === "document" ? "document" : options.media.type;
+      const res = await fetchWithTimeout(`${GRAPH}/${creds.phone_number_id}/messages`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${creds.access_token ?? ""}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          recipient_type: "individual",
+          to: dest,
+          type: mediaType,
+          [mediaType]: {
+            link: options.media.url,
+            caption: options.media.caption || options.text || "",
+            filename: options.media.filename,
+          },
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        messages?: { id?: string }[];
+        error?: { message?: string; code?: number };
+      };
+      if (!res.ok) {
+        if (json.error?.code === 131047) {
+          throw new Error("WhatsApp: la finestra di 24 ore è chiusa. Il cliente deve scrivere per primo per ricevere una risposta libera.");
+        }
+        throw new Error(`WhatsApp: ${json.error?.message ?? `invio non riuscito (${res.status})`}`);
+      }
+      return { externalId: json.messages?.[0]?.id ?? "", status: "sent" };
+    }
+    
+    // Solo testo
     const res = await fetchWithTimeout(`${GRAPH}/${creds.phone_number_id}/messages`, {
       method: "POST",
       headers: {
@@ -377,7 +425,7 @@ export async function sendChannelMessage(
         recipient_type: "individual",
         to: dest,
         type: "text",
-        text: { preview_url: false, body },
+        text: { preview_url: false, body: options.text!.trim() },
       }),
     });
     const json = (await res.json().catch(() => ({}))) as {
@@ -388,9 +436,7 @@ export async function sendChannelMessage(
       if (json.error?.code === 131047) {
         throw new Error("WhatsApp: la finestra di 24 ore è chiusa. Il cliente deve scrivere per primo per ricevere una risposta libera.");
       }
-      throw new Error(
-        `WhatsApp: ${json.error?.message ?? `invio non riuscito (${res.status})`}`,
-      );
+      throw new Error(`WhatsApp: ${json.error?.message ?? `invio non riuscito (${res.status})`}`);
     }
     return { externalId: json.messages?.[0]?.id ?? "", status: "sent" };
   }
@@ -398,13 +444,47 @@ export async function sendChannelMessage(
   if (channel.provider === "instagram") {
     const dest = to.trim();
     if (!dest) throw new Invalid("Destinatario Instagram non valido.");
+    
+    if (hasMedia && options.media) {
+      // Instagram supporta solo image e video via attachment URL
+      const attachmentType = options.media.type === "video" ? "video" : "image";
+      const res = await fetchWithTimeout(`${GRAPH}/${creds.ig_user_id}/messages`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${creds.access_token ?? ""}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          recipient: { id: dest },
+          message: {
+            attachment: {
+              type: attachmentType,
+              payload: { url: options.media.url, is_reusable: true },
+            },
+          },
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        message_id?: string;
+        error?: { message?: string; code?: number };
+      };
+      if (!res.ok) {
+        if (json.error?.code === 10 || json.error?.code === 200) {
+          throw new Error("Instagram: finestra di risposta scaduta o permessi insufficienti sul messaggio.");
+        }
+        throw new Error(`Instagram: ${json.error?.message ?? `invio non riuscito (${res.status})`}`);
+      }
+      return { externalId: json.message_id ?? "", status: "sent" };
+    }
+    
+    // Solo testo
     const res = await fetchWithTimeout(`${GRAPH}/${creds.ig_user_id}/messages`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${creds.access_token ?? ""}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ recipient: { id: dest }, message: { text: body } }),
+      body: JSON.stringify({ recipient: { id: dest }, message: { text: options.text!.trim() } }),
     });
     const json = (await res.json().catch(() => ({}))) as {
       message_id?: string;
@@ -419,10 +499,41 @@ export async function sendChannelMessage(
     return { externalId: json.message_id ?? "", status: "sent" };
   }
 
+  // SMS/MMS via Twilio
   const dest = normalizePhone(to);
   if (dest.replace(/\D/g, "").length < 6) throw new Invalid("Destinatario SMS non valido.");
   const auth = Buffer.from(`${creds.account_sid}:${creds.auth_token}`).toString("base64");
-  const form = new URLSearchParams({ From: creds.from ?? "", To: dest, Body: body });
+  
+  if (hasMedia && options.media) {
+    // MMS via Twilio: usa MediaUrl
+    const form = new URLSearchParams({
+      From: creds.from ?? "",
+      To: dest,
+      Body: options.text || "",
+      MediaUrl: options.media.url,
+    });
+    const res = await fetchWithTimeout(
+      `https://api.twilio.com/2010-04-01/Accounts/${creds.account_sid}/Messages.json`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${auth}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: form.toString(),
+      },
+    );
+    const json = (await res.json().catch(() => ({}))) as {
+      sid?: string;
+      status?: string;
+      message?: string;
+    };
+    if (!res.ok) throw new Error(`MMS: ${json.message ?? `invio non riuscito (${res.status})`}`);
+    return { externalId: json.sid ?? "", status: json.status ?? "queued" };
+  }
+  
+  // Solo SMS
+  const form = new URLSearchParams({ From: creds.from ?? "", To: dest, Body: options.text!.trim() });
   const res = await fetchWithTimeout(
     `https://api.twilio.com/2010-04-01/Accounts/${creds.account_sid}/Messages.json`,
     {
@@ -452,6 +563,13 @@ export interface InboundEvent {
   text: string;
   externalId: string;
   kind: "text" | "media";
+  media?: {
+    type: string;
+    id: string;
+    mime_type?: string;
+    sha256?: string;
+    filename?: string;
+  } | null;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -481,15 +599,25 @@ export function parseWhatsAppWebhook(payload: unknown): InboundEvent[] {
         if (!from) continue;
         const profile = asRecord(contacts[0]?.profile);
         const type = asString(message.type);
-        const text =
-          type === "text"
-            ? asString(asRecord(message.text).body)
-            : type === "button"
-              ? asString(asRecord(message.button).text)
-              : type === "interactive"
-                ? asString(asRecord(asRecord(message.interactive).button_reply).title) ||
-                  asString(asRecord(asRecord(message.interactive).list_reply).title)
-                : "";
+        let text = "";
+        let media: { type: string; id: string; mime_type?: string; sha256?: string; filename?: string } | null = null;
+        if (type === "text") {
+          text = asString(asRecord(message.text).body);
+        } else if (type === "button") {
+          text = asString(asRecord(message.button).text);
+        } else if (type === "interactive") {
+          text = asString(asRecord(asRecord(message.interactive).button_reply).title) ||
+            asString(asRecord(asRecord(message.interactive).list_reply).title);
+        } else if (["image", "document", "audio", "video", "sticker"].includes(type)) {
+          const mediaObj = asRecord(message[type]);
+          media = {
+            type,
+            id: asString(mediaObj.id),
+            mime_type: asString(mediaObj.mime_type),
+            sha256: asString(mediaObj.sha256),
+            filename: asString(mediaObj.filename),
+          };
+        }
         out.push({
           externalChannelId: phoneNumberId,
           contact: from,
@@ -497,6 +625,7 @@ export function parseWhatsAppWebhook(payload: unknown): InboundEvent[] {
           text,
           externalId: asString(message.id),
           kind: text ? "text" : "media",
+          media,
         });
       }
     }
@@ -518,6 +647,17 @@ export function parseInstagramWebhook(payload: unknown): InboundEvent[] {
       if (!igId || !sender || sender === igId) continue;
       if (recipient && recipient !== igId) continue;
       const text = asString(message.text);
+      let media: { type: string; id: string; mime_type?: string; sha256?: string; filename?: string } | null = null;
+      const attachments = asArray(message.attachments).map(asRecord);
+      if (attachments.length > 0) {
+        const att = attachments[0];
+        media = {
+          type: asString(att.type),
+          id: asString(att.id),
+          mime_type: asString(att.mime_type),
+          filename: asString(att.filename),
+        };
+      }
       out.push({
         externalChannelId: igId,
         contact: sender,
@@ -525,6 +665,7 @@ export function parseInstagramWebhook(payload: unknown): InboundEvent[] {
         text,
         externalId: asString(message.mid),
         kind: text ? "text" : "media",
+        media,
       });
     }
   }

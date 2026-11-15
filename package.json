@@ -33,6 +33,7 @@
     "@types/nodemailer": "^8.0.2",
     "@types/pg": "^8.23.1",
     "esbuild": "^0.28.2",
+    "happy-dom": "^21.0.4",
     "prisma": "^7.10.1",
     "tsx": "^4.23.15",
     "typescript": "^5.9.0",

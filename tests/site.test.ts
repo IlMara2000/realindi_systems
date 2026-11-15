@@ -84,9 +84,10 @@ describe("routing sito", () => {
 
   it("nessuna risorsa esterna caricata da script o fogli di stile (CSP)", async () => {
     const home = await get("/");
-    expect(home.text).not.toMatch(/<(script|link)[^>]+(src|href)=["']https?:/);
+    // Controlla solo script e link[rel=stylesheet], non metadati come canonical/og:image
+    expect(home.text).not.toMatch(/<(script|link[^>]*rel=["']stylesheet["'])[^>]+(src|href)=["']https?:/);
     const bio = await get("/bio");
-    expect(bio.text).not.toMatch(/<(script|link)[^>]+(src|href)=["']https?:/);
+    expect(bio.text).not.toMatch(/<(script|link[^>]*rel=["']stylesheet["'])[^>]+(src|href)=["']https?:/);
   });
 
   it("la pagina bio ha il mount dei link e carica site.js", async () => {

@@ -30,6 +30,7 @@ Variabili d’ambiente (opzionali; senza di esse le integrazioni restano disatti
 | `INTEGRATIONS_KEY` | Chiave per cifrare (AES-256-GCM) le credenziali Google/Apple, dei canali WhatsApp/Instagram/SMS e la chiave AI: generane una lunga e casuale e non cambiarla mai dopo il primo collegamento |
 | `GOOGLE_CLIENT_ID` | Client OAuth di Google Cloud |
 | `GOOGLE_CLIENT_SECRET` | Segreto OAuth di Google Cloud |
+| `APP_ORIGIN` | Origine pubblica usata per il redirect OAuth (es. `https://realindi-systems.vercel.app`), senza percorso. Su Vercel l'host cambia fra produzione, dominio personalizzato e preview: senza questa variabile il `redirect_uri` seguirebbe il dominio del deployment e Google risponderebbe `redirect_uri_mismatch` |
 
 **Suite di test (`npm test`).** `DATABASE_URL_TEST` non è il database su cui girano i test: è solo il modello di connessione, da cui la suite ricava host, credenziali e `sslmode`, mentre il nome del database serve solo come punto di partenza. Ogni esecuzione crea accanto a questo un database proprio — `realindi_test_run_<timestamp>_<nonce>` — vi applica le migrazioni di `prisma/migrations` e lo elimina alla fine; quelli rimasti da una run interrotta vengono cancellati al successivo avvio dopo un'ora. Due `npm test` in parallelo non si toccano e il database indicato in `DATABASE_URL_TEST` non viene mai modificato.
 

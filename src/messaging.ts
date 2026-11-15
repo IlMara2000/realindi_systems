@@ -1,7 +1,7 @@
 // Inbox unificata: salvataggio dei messaggi in ingresso, risposta automatica
 // dell'assistente (con freni anti-loop) e risposte manuali del titolare.
 import { prisma } from "./db.js";
-import { Invalid } from "./util.js";
+import { Invalid, sha256Bytes } from "./util.js";
 import { utcStamp } from "./notes.js";
 import { assistantSettings, generateReply } from "./assistant.js";
 import {
@@ -10,6 +10,7 @@ import {
   sendChannelMessage,
   type ChannelRecord,
 } from "./channels.js";
+import { tokenHex } from "./util.js";
 
 export interface IngestInput {
   channel: ChannelRecord;
@@ -18,6 +19,13 @@ export interface IngestInput {
   text: string;
   externalId?: string;
   kind?: "text" | "media";
+  media?: {
+    type: string;
+    id: string;
+    mime_type?: string;
+    sha256?: string;
+    filename?: string;
+  } | null;
 }
 
 export interface IngestResult {
@@ -79,6 +87,15 @@ export async function ingestInbound(input: IngestInput): Promise<IngestResult> {
       created_at: now,
     },
   });
+
+  // Se c'è un media, scaricalo e salvalo
+  if (input.media?.id) {
+    const downloaded = await downloadMedia(input.channel, input.media.id, input.media.mime_type);
+    if (downloaded) {
+      await saveAttachment(incoming.id, conversation.id, downloaded.buffer, downloaded.filename, downloaded.mimeType);
+    }
+  }
+
   const fresh = await p.conversation.update({
     where: { id: conversation.id },
     data: { unread: { increment: 1 }, last_message_at: now },
@@ -171,6 +188,83 @@ export async function ingestInbound(input: IngestInput): Promise<IngestResult> {
     await p.conversation.update({ where: { id: fresh.id }, data: { status: "human" } });
     return { conversationId: fresh.id, replied: false, error: message };
   }
+}
+
+async function downloadMedia(channel: ChannelRecord, mediaId: string, mimeType?: string): Promise<{ buffer: Buffer; filename: string; mimeType: string } | null> {
+  const creds = channelCredentials(channel);
+  let url: string;
+  let headers: Record<string, string> = {};
+
+  if (channel.provider === "whatsapp") {
+    // WhatsApp: prima ottieni l'URL del media, poi scarica
+    const res = await fetch(`https://graph.facebook.com/${process.env.META_GRAPH_VERSION ?? "v23.0"}/${mediaId}`, {
+      headers: { Authorization: `Bearer ${creds.access_token ?? ""}` },
+    });
+    if (!res.ok) return null;
+    const json = (await res.json().catch(() => ({}))) as { url?: string; mime_type?: string; sha256?: string; file_size?: number; filename?: string };
+    if (!json.url) return null;
+    url = json.url;
+    mimeType = mimeType || json.mime_type;
+    const fileRes = await fetch(url, { headers: { Authorization: `Bearer ${creds.access_token ?? ""}` } });
+    if (!fileRes.ok) return null;
+    const buffer = Buffer.from(await fileRes.arrayBuffer());
+    const filename = json.filename || `media-${tokenHex(8)}`;
+    return { buffer, filename, mimeType: mimeType || "application/octet-stream" };
+  }
+
+  if (channel.provider === "instagram") {
+    // Instagram: simile a WhatsApp (stesso Graph API)
+    const res = await fetch(`https://graph.facebook.com/${process.env.META_GRAPH_VERSION ?? "v23.0"}/${mediaId}`, {
+      headers: { Authorization: `Bearer ${creds.access_token ?? ""}` },
+    });
+    if (!res.ok) return null;
+    const json = (await res.json().catch(() => ({}))) as { url?: string; mime_type?: string; filename?: string };
+    if (!json.url) return null;
+    url = json.url;
+    mimeType = mimeType || json.mime_type;
+    const fileRes = await fetch(url, { headers: { Authorization: `Bearer ${creds.access_token ?? ""}` } });
+    if (!fileRes.ok) return null;
+    const buffer = Buffer.from(await fileRes.arrayBuffer());
+    const filename = json.filename || `media-${tokenHex(8)}`;
+    return { buffer, filename, mimeType: mimeType || "application/octet-stream" };
+  }
+
+  return null;
+}
+
+async function saveAttachment(
+  messageId: number,
+  conversationId: number,
+  buffer: Buffer,
+  filename: string,
+  mimeType: string,
+): Promise<void> {
+  const p = prisma();
+  const storageName = `msg-${messageId}-${tokenHex(16)}`;
+  // Prisma Bytes accetta Uint8Array - crea una copia per evitare problemi di SharedArrayBuffer
+  const uint8 = new Uint8Array(buffer);
+  const hash = sha256Bytes(uint8);
+  await p.messageAttachment.create({
+    data: {
+      message_id: messageId,
+      conversation_id: conversationId,
+      filename,
+      mime_type: mimeType,
+      size: buffer.length,
+      sha256: hash,
+      storage_name: storageName,
+      content: uint8,
+    },
+  });
+  // Aggiorna il messaggio con info dell'allegato
+  await p.message.update({
+    where: { id: messageId },
+    data: {
+      media_type: mimeType,
+      media_storage_name: storageName,
+      media_url: `/api/messages/${messageId}/attachment`,
+    },
+  });
 }
 
 function channelLabel(channel: ChannelRecord): string {

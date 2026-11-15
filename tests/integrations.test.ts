@@ -2,14 +2,15 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
 import { startServer, type RunningServer } from "../scripts/dev-server.js";
 import { sql, makeClient, resetDb, type TestClient } from "./helpers.js";
+import { AppleHttpError, appleError, appleSyncMessage } from "../src/integrations.js";
 
 // La verifica Apple fa login IMAP reale: va mockkato a livello di modulo.
-const imap = vi.hoisted(() => ({ shouldFail: false, connects: 0 }));
+const imap = vi.hoisted(() => ({ shouldFail: false, connects: 0, failWith: null as unknown }));
 vi.mock("imapflow", () => ({
   ImapFlow: class {
     async connect() {
       imap.connects += 1;
-      if (imap.shouldFail) throw new Error("Invalid login credentials");
+      if (imap.shouldFail) throw imap.failWith ?? new Error("Invalid login credentials");
     }
     async logout() {}
   },
@@ -136,8 +137,26 @@ describe("integrazioni", () => {
     const decoded = decodeURIComponent(ok.body.url);
     expect(decoded).toContain(GOOGLE_ENV.GOOGLE_CLIENT_ID);
     expect(decoded).toContain("https://www.googleapis.com/auth/calendar.events");
+    expect(decoded).toContain("https://www.googleapis.com/auth/contacts.readonly");
     expect(decoded).toContain("/api/integrations/google/callback");
+    // In locale il dev server non manda x-forwarded-proto: l'origine deve
+    // restare http, altrimenti Google rifiuta il redirect_uri.
+    expect(decoded).toContain(`${base}/api/integrations/google/callback`);
     expect(decoded).toContain("state=");
+  });
+
+  it("APP_ORIGIN fissa il redirect OAuth sul dominio pubblico, barra finale compresa", async () => {
+    const c = await fresh();
+    vi.stubEnv("GOOGLE_CLIENT_ID", GOOGLE_ENV.GOOGLE_CLIENT_ID);
+    vi.stubEnv("GOOGLE_CLIENT_SECRET", GOOGLE_ENV.GOOGLE_CLIENT_SECRET);
+    vi.stubEnv("INTEGRATIONS_KEY", GOOGLE_ENV.INTEGRATIONS_KEY);
+    vi.stubEnv("APP_ORIGIN", "https://realindi-systems.vercel.app/");
+
+    const ok = await c.request("/api/integrations/google/connect");
+    expect(ok.status).toBe(200);
+    expect(decodeURIComponent(ok.body.url)).toContain(
+      "redirect_uri=https://realindi-systems.vercel.app/api/integrations/google/callback",
+    );
   });
 
   it("callback con state errato → 403, nessun salvataggio", async () => {
@@ -292,5 +311,131 @@ describe("regressione: /api/state dopo il collegamento", () => {
     expect(raw).not.toContain("abcd-efgh-ijkl");
     expect(raw).not.toContain("v1:");
     expect(raw).not.toContain("client-secret-di-test");
+  });
+});
+
+describe("errori del collegamento Apple", () => {
+  // Stessa forma dell'errore che lancia imapflow su un login rifiutato.
+  const rifiutate = () =>
+    Object.assign(new Error("3 NO [AUTHENTICATIONFAILED] Invalid credentials (Failure)"), {
+      authenticationFailed: true,
+      responseStatus: "NO",
+      responseText: "Invalid credentials (Failure)",
+      serverResponseCode: "AUTHENTICATIONFAILED",
+    });
+  const conCodice = (code: string) => Object.assign(new Error(`connect ${code}`), { code });
+
+  it("password dell'ID Apple al posto di quella per le app: porta alla 2FA", () => {
+    const msg = appleError(rifiutate(), "PasswordDiApple1!").message;
+    expect(msg).toContain("non è una password per le app");
+    expect(msg).toContain("due fattori");
+    expect(msg).toContain("account.apple.com");
+  });
+
+  it("password per le app rifiutata: revocata o copiata male", () => {
+    const msg = appleError(rifiutate(), "abcd-efgh-ijkl-mnop").message;
+    expect(msg).toContain("rifiutato la password per le app");
+    expect(msg).toContain("revocata");
+    expect(msg).not.toContain("due fattori");
+  });
+
+  it("guasti di rete distinti fra loro e mai scambiati per password errata", () => {
+    const dns = appleError(conCodice("ENOTFOUND"), "abcd-efgh-ijkl-mnop").message;
+    expect(dns).toContain("non si risolve");
+    expect(dns).not.toContain("password");
+
+    const timeout = appleError(conCodice("ETIMEDOUT"), "abcd-efgh-ijkl-mnop").message;
+    expect(timeout).toContain("non ha risposto entro 10 secondi");
+    expect(timeout).toContain("993");
+
+    const refused = appleError(conCodice("ECONNREFUSED"), "abcd-efgh-ijkl-mnop").message;
+    expect(refused).toContain("rifiutata o interrotta");
+
+    const tls = appleError(conCodice("DEPTH_ZERO_SELF_SIGNED_CERT"), "abcd-efgh-ijkl-mnop").message;
+    expect(tls).toContain("TLS");
+  });
+
+  it("la rotta /api/integrations/apple riporta il motivo e non salva nulla", async () => {
+    const c = await fresh();
+    vi.stubEnv("INTEGRATIONS_KEY", GOOGLE_ENV.INTEGRATIONS_KEY);
+    const corpo = {
+      apple_id: "dany@icloud.com",
+      sender_email: "dany@icloud.com",
+    };
+
+    imap.shouldFail = true;
+    imap.failWith = rifiutate();
+    const senzaApp = await c.request("/api/integrations/apple", {
+      ...corpo,
+      app_password: "PasswordDiApple1!",
+    });
+    expect(senzaApp.status).toBe(400);
+    expect(senzaApp.body.error).toContain("non è una password per le app");
+
+    const revocata = await c.request("/api/integrations/apple", {
+      ...corpo,
+      app_password: "abcd-efgh-ijkl-mnop",
+    });
+    expect(revocata.status).toBe(400);
+    expect(revocata.body.error).toContain("revocata");
+
+    imap.failWith = conCodice("ENOTFOUND");
+    const rete = await c.request("/api/integrations/apple", {
+      ...corpo,
+      app_password: "abcd-efgh-ijkl-mnop",
+    });
+    expect(rete.status).toBe(400);
+    expect(rete.body.error).toContain("non si risolve");
+    expect(rete.body.error).not.toContain("Password");
+
+    expect(await sql("SELECT value FROM settings WHERE key = 'int_apple'")).toHaveLength(0);
+    expect((await c.request("/api/integrations/status")).body.apple.connected).toBe(false);
+
+    imap.shouldFail = false;
+    imap.failWith = null;
+    const ok = await c.request("/api/integrations/apple", {
+      ...corpo,
+      app_password: "abcd-efgh-ijkl-mnop",
+    });
+    expect(ok.status).toBe(200);
+  });
+
+  it("in sincronizzazione gli stati HTTP raccontano cause diverse", () => {
+    const revocata = appleSyncMessage(new AppleHttpError(401, "la lettura del calendario"));
+    expect(revocata).toContain("rifiutato le credenziali salvate");
+    expect(revocata).toContain("revocata o scaduta");
+    expect(revocata).toContain("Ricollega l'account");
+    expect(revocata).toContain("la lettura del calendario");
+
+    const lento = appleSyncMessage(new AppleHttpError(429, "l'elenco delle rubriche"));
+    expect(lento).toContain("rallentare");
+
+    const guasto = appleSyncMessage(new AppleHttpError(503, "l'elenco dei calendari"));
+    expect(guasto).toContain("disservizio");
+
+    const altro = appleSyncMessage(new AppleHttpError(400, "la ricerca del principal"));
+    expect(altro).toContain("rifiutato la richiesta");
+  });
+
+  it("in sincronizzazione la rete segue le stesse regole del login", () => {
+    const dns = appleSyncMessage(
+      Object.assign(new TypeError("fetch failed"), {
+        cause: Object.assign(new Error("getaddrinfo ENOTFOUND p21-contacts.icloud.com"), {
+          code: "ENOTFOUND",
+        }),
+      }),
+    );
+    expect(dns).toContain("non si risolve");
+    expect(dns).not.toContain("password");
+
+    const timeout = appleSyncMessage(
+      Object.assign(new TypeError("fetch failed"), {
+        cause: Object.assign(new Error("Connect Timeout Error"), { code: "UND_ERR_CONNECT_TIMEOUT" }),
+      }),
+    );
+    expect(timeout).toContain("non ha risposto in tempo");
+
+    const tls = appleSyncMessage(Object.assign(new Error("tls"), { code: "ERR_TLS_CERT_ALTNAME_INVALID" }));
+    expect(tls).toContain("TLS");
   });
 });
