@@ -520,6 +520,27 @@ describe("CRM", () => {
     expect((await makeClient(base).request("/api/login", { password: codici[0] })).status).toBe(200);
   });
 
+  it("l'annullamento pubblico ha un limite per indirizzo", async () => {
+    // Il ciclo da fermare è quello che prova token a caso: il limite conta anche
+    // i tentativi con un token che non esiste.
+    for (let i = 0; i < 10; i++) {
+      const r = await makeClient(base).request(
+        "/api/cancel-booking",
+        { token: `inventato-${i}` },
+        { public: true },
+      );
+      expect(r.status).toBe(400);
+      expect(r.body.error).toBe("Prenotazione non trovata.");
+    }
+    const fermato = await makeClient(base).request(
+      "/api/cancel-booking",
+      { token: "inventato-dopo" },
+      { public: true },
+    );
+    expect(fermato.status).toBe(400);
+    expect(fermato.body.error).toContain("Troppe richieste");
+  });
+
   it("sicurezza e validazione", async () => {
     const c = await fresh();
     expect((await c.request("/api/state", undefined, { public: true })).status).toBe(401);

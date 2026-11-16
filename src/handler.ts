@@ -85,7 +85,7 @@ import {
   trainFromSite,
 } from "./assistant.js";
 import { agentReply, executeAgentActions } from "./agent.js";
-import { replyLimit } from "./ratelimit.js";
+import { bookingLimit, cancelLimit, replyLimit } from "./ratelimit.js";
 import {
   conversationThread,
   ingestInbound,
@@ -137,6 +137,20 @@ function send(
 
 function sendError(status: number, message: string): HandlerResponse {
   return send({ error: message }, status);
+}
+
+/**
+ * Applica un limite a un endpoint pubblico. Restituisce il messaggio da dare
+ * all'utente quando il tetto è raggiunto, altrimenti null.
+ */
+async function limitePubblico(
+  limiter: { check(key: string): Promise<{ allowed: boolean; retryAfterMs: number }> },
+  key: string,
+): Promise<string | null> {
+  const esito = await limiter.check(key);
+  if (esito.allowed) return null;
+  const minuti = Math.max(1, Math.ceil(esito.retryAfterMs / 60_000));
+  return `Troppe richieste da questo indirizzo. Riprova tra ${minuti} ${minuti === 1 ? "minuto" : "minuti"}.`;
 }
 
 /**
@@ -1102,12 +1116,18 @@ async function handlePost(req: HandlerRequest): Promise<HandlerResponse> {
   }
 
   if (path.startsWith("/api/booking/")) {
+    const rifiuto = await limitePubblico(bookingLimit, `prenotazione:${req.ip}`);
+    if (rifiuto) throw new Invalid(rifiuto);
     const slug = path.split("/").pop()!;
     const result = await createAppointment(slug, d);
     return send({ ok: true, ...result });
   }
 
   if (path === "/api/cancel-booking") {
+    // Il limite conta anche i tentativi con un token sbagliato: è proprio quello
+    // il ciclo che vale la pena fermare.
+    const rifiuto = await limitePubblico(cancelLimit, `annullamento:${req.ip}`);
+    if (rifiuto) throw new Invalid(rifiuto);
     const token = requiredField(d, "token");
     const found = await p.appointment.findUnique({ where: { cancel_token: token } });
     if (!found) throw new Invalid("Prenotazione non trovata.");

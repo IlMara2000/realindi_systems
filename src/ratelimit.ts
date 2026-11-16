@@ -110,3 +110,19 @@ export function postgresStore(windowMs: number, max: number): LimitStore {
 export const replyLimit = createLimiter({
   store: postgresStore(REPLY_WINDOW_MS, MAX_REPLIES),
 });
+
+// Endpoint pubblici senza logout: chiunque conosca l'URL può chiamarli. Senza
+// limite, la pagina di prenotazione diventa un modo per riempire l'agenda e
+// l'annullamento un modo per indovinare i token. I tetti sono larghi per una
+// persona (una prenotazione, un annullamento) e stretti per un ciclo.
+export const BOOKING_WINDOW_MS = 10 * 60_000;
+export const MAX_BOOKINGS = 30;
+export const MAX_CANCELLATIONS = 10;
+
+export const bookingLimit = createLimiter({
+  store: postgresStore(BOOKING_WINDOW_MS, MAX_BOOKINGS),
+});
+
+export const cancelLimit = createLimiter({
+  store: postgresStore(BOOKING_WINDOW_MS, MAX_CANCELLATIONS),
+});

@@ -18,6 +18,10 @@ output/
 .venv/
 tools/
 
+# Artefatti di verifica visiva (screenshot e anteprime), non parti del progetto.
+preview-*.png
+screenshot-*.png
+
 .freebuff/
 .21st/
 .cloud-attachments/
