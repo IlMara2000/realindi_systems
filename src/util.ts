@@ -2,6 +2,7 @@
 // Ogni funzione rispecchia 1:1 la controparte in app.py / fiscal.py.
 import Decimal from "decimal.js";
 import crypto from "node:crypto";
+import { isIP } from "node:net";
 
 // Contesto Python Decimal di default: 28 cifre significative, arrotondamento HALF_UP.
 Decimal.set({ precision: 28, rounding: Decimal.ROUND_HALF_UP });
@@ -166,6 +167,58 @@ export function dateUtc(dt: Date): string {
 /** weekday(): lunedì=0 … domenica=6 (come Python date.weekday()). */
 export function weekdayMonday0(y: number, m: number, d: number): number {
   return (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7;
+}
+
+/**
+ * Tentativi di login falliti oltre i quali il messaggio diventa «troppi».
+ * Sta qui perché lo usano sia il login (src/db.ts) sia lo script di stato.
+ */
+export const LIMITE_TENTATIVI_LOGIN = 10;
+
+/** IPv4, IPv6 o IPv4-mapped (::ffff:1.2.3.4) in forma canonica, altrimenti null. */
+function ipCanonico(valore: string | undefined): string | null {
+  const v = (valore ?? "").trim().replace(/^\[|\]$/g, "");
+  if (!v) return null;
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(v);
+  if (mapped) return isIP(mapped[1]) === 4 ? mapped[1] : null;
+  return isIP(v) ? v.toLowerCase() : null;
+}
+
+/** Ultimo IP valido di una lista: quello aggiunto dal proxy più vicino. */
+function ultimoIp(header: string | undefined): string | null {
+  if (!header) return null;
+  const validi = header.split(",").map(ipCanonico).filter((v): v is string => v !== null);
+  return validi.length ? validi[validi.length - 1] : null;
+}
+
+/**
+ * IP del client, chiave del limite dei tentativi e delle righe di
+ * `login_attempts` che il comando `--stato` mostra.
+ *
+ * Gli header non si leggono da soli: `X-Forwarded-For` è scritto dal client
+ * quando non c'è un proxy che lo sovrascrive, e chi attacca potrebbe ruotare il
+ * primo valore per non far mai scattare il blocco, lasciando in tabella IP
+ * inventati che rendono falsa la diagnosi. Quindi:
+ *   - dietro un proxy fidato (su Vercel) si usano `x-vercel-forwarded-for`,
+ *     che un proxy davanti a Vercel non sovrascrive, poi `x-forwarded-for`;
+ *   - di una lista si prende l'ultimo IP valido, quello aggiunto dal proxy;
+ *   - senza proxy fidato si usa solo l'indirizzo della connessione e gli header
+ *     si ignorano, così in locale non è falsificabile.
+ * Un valore che non è un IP viene scartato, non usato come chiave.
+ */
+export function clientIp(
+  headers: Record<string, string | undefined>,
+  socketAddress: string | undefined,
+  opzioni: { dietroProxy: boolean },
+): string {
+  const socket = ipCanonico(socketAddress) ?? "127.0.0.1";
+  if (!opzioni.dietroProxy) return socket;
+  return (
+    ultimoIp(headers["x-vercel-forwarded-for"]) ??
+    ultimoIp(headers["x-forwarded-for"]) ??
+    ultimoIp(headers["x-real-ip"]) ??
+    socket
+  );
 }
 
 /** secrets.token_urlsafe(nbytes) — URL-safe base64 senza padding. */

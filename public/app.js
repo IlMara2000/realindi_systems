@@ -123,6 +123,7 @@ const labels = {
   notes: "Note",
   messages: "Messaggi",
   channels: "Canali",
+  security: "Sicurezza",
   discovery: "In definizione",
   active: "In corso",
   paused: "In pausa",
@@ -152,6 +153,7 @@ const paths = {
   messages:
     "M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7A8.5 8.5 0 0 1 4 11.5 8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5z",
   channels: "M9 2v6 M15 2v6 M6 8h12v4a6 6 0 0 1-12 0z M12 18v4",
+  security: "M5 11h14v10H5z M8 11V7a4 4 0 0 1 8 0v4 M12 15v2",
   settings:
     "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8 M12 2v3 M12 19v3 M2 12h3 M19 12h3 M5 5l2 2 M17 17l2 2 M5 19l2-2 M17 7l2-2",
 };
@@ -346,13 +348,40 @@ async function saved(message) {
 const RECUPERO_PASSWORD =
   '<details class="hint auth-recovery">' +
   "<summary>Password dimenticata?</summary>" +
-  "<p>Non si recupera e non arriva via email: nel workspace è salvata solo come " +
-  "hash. Reimpostala dal computer dove gira il gestionale, con doppio clic su " +
+  "<p>Se hai salvato il codice di emergenza mostrato al setup (o all'ultima " +
+  "reimpostazione), incollalo nel campo password: vale come la password. Altrimenti " +
+  "va reimpostata dal computer dove gira il gestionale, con doppio clic su " +
   "<strong>Reimposta password.command</strong> (oppure con " +
   "<code>npm run password:reimposta</code>): chiede la nuova password, chiude le " +
   "sessioni aperte e sblocca i tentativi falliti, senza toccare clienti, documenti " +
   "e fatture. Non è una procedura remota.</p>" +
   "</details>";
+
+/**
+ * Codice di emergenza appena generato: esiste solo in questa risposta, quindi si
+ * mostra una volta con un pulsante per copiarlo e uno per entrare. Nel database
+ * resta solo l'hash, quindi se si perde si rigenera con il comando di reset.
+ */
+function mostraEmergenza(codice) {
+  $("#auth-form").closest(".auth-form").innerHTML =
+    '<div class="eyebrow">Workspace creato</div>' +
+    "<h1>Salva il codice di emergenza.</h1>" +
+    '<p class="subtitle">Entra al posto della password se la dimentichi, senza terminale né accesso al database. Non viene mostrato di nuovo.</p>' +
+    `<p class="link-box">${esc(codice)}</p>` +
+    '<div class="actions"><button type="button" class="secondary" id="emergenza-copia">Copia</button>' +
+    '<button type="button" class="primary" id="emergenza-entra">L’ho salvato, entra</button></div>' +
+    '<p class="hint">Conservalo nel gestore password accanto alla password. Se lo perdi, «Reimposta password.command» ne genera un altro.</p>';
+  $("#emergenza-copia").onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(codice);
+      $("#emergenza-copia").textContent = "Copiato";
+    } catch {
+      // Senza permesso per gli appunti resta il testo a schermo, da copiare a mano.
+      $("#emergenza-copia").textContent = "Copia a mano";
+    }
+  };
+  $("#emergenza-entra").onclick = () => refresh();
+}
 
 function auth(setup) {
   themeControl.transient = true;
@@ -367,7 +396,10 @@ function auth(setup) {
     try {
       if (setup && d.password !== d.confirm)
         throw new Error("Le password non coincidono.");
-      await api(setup ? "/api/setup" : "/api/login", d);
+      const res = await api(setup ? "/api/setup" : "/api/login", d);
+      // Il codice di emergenza arriva solo in questa risposta: si mostra subito,
+      // perché dopo non è più recuperabile.
+      if (setup && res?.emergenza) return mostraEmergenza(res.emergenza);
       await refresh();
     } catch (e) {
       $(".error", f).textContent = e.message;
@@ -410,7 +442,7 @@ function render() {
     if (location.hash) history.replaceState(null, "", "#dashboard");
   }
   $("#root").innerHTML =
-    `<div class="shell"><div class="drawer-scrim" data-action="menu-close" aria-hidden="true"></div><button type="button" class="drawer-tab" data-action="menu-open" aria-controls="crm-menu" aria-expanded="false" aria-label="Apri il menu"><span aria-hidden="true">‹</span></button><aside class="sidebar" id="crm-menu"><button type="button" class="drawer-close" data-action="menu-close" aria-label="Chiudi il menu">×</button><a class="brand" href="#dashboard"><img class="brand-mark" src="/assets/logo-realindi.png" alt="" width="32" height="32"> REALINDI</a><div class="brand-sub">FREELANCER WORKSPACE</div><div class="nav-label">WORKSPACE</div><nav class="nav" aria-label="Menu principale">${["dashboard", "messages", "clients", "projects", "quotes", "invoices", "ricevute", "documents", "calendar", "planner", "notes", "channels"].map((k) => k === "ricevute" ? `<a href="/ricevute">${icon("invoices")}Ricevute</a>` : `<a href="#${k}" class="${route === k ? "active" : ""}" ${route === k ? 'aria-current="page"' : ""}>${icon(k)}${labels[k]}</a>`).join("")}</nav><div class="sidebar-bottom"><div class="nav-label">IL TUO BUSINESS, IN ORDINE.</div><div class="account"><span class="avatar">${esc((state.settings.owner_name || "RS").slice(0, 2).toUpperCase())}</span><div>${esc(state.settings.owner_name || "Il tuo workspace")}<small>Consulente indipendente</small></div></div></div></aside><main class="main"><header class="topbar"><div class="topbar-head"><a class="back-site" href="/">Torna al sito</a><div class="crumb">Workspace <span>/ &nbsp; ${labels[route]}</span></div></div><div class="top-right"><button type="button" class="agent-launch" data-action="agent-open" aria-controls="buffy-panel" aria-expanded="false"><span class="agent-launch-mark" aria-hidden="true">B</span><span class="agent-launch-label">Buffy</span></button><span class="local-status"><i class="status-dot"></i>Archivio locale</span>${btn("Esci", "logout", "", "secondary small")}<button type="button" class="theme-toggle" id="theme-toggle" aria-label="Cambia tema" aria-pressed="${document.documentElement.classList.contains("dark-mode")}"><svg class="theme-icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg><svg class="theme-icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button><button type="button" class="nav-toggle" data-action="menu-toggle" aria-controls="crm-menu" aria-expanded="false" aria-label="Apri il menu"><span class="nav-toggle-bars" aria-hidden="true"></span></button></div></header><div class="content" id="content"></div></main></div>`;
+    `<div class="shell"><div class="drawer-scrim" data-action="menu-close" aria-hidden="true"></div><button type="button" class="drawer-tab" data-action="menu-open" aria-controls="crm-menu" aria-expanded="false" aria-label="Apri il menu"><span aria-hidden="true">‹</span></button><aside class="sidebar" id="crm-menu"><button type="button" class="drawer-close" data-action="menu-close" aria-label="Chiudi il menu">×</button><a class="brand" href="#dashboard"><img class="brand-mark" src="/assets/logo-realindi.png" alt="" width="32" height="32"> REALINDI</a><div class="brand-sub">FREELANCER WORKSPACE</div><div class="nav-label">WORKSPACE</div><nav class="nav" aria-label="Menu principale">${["dashboard", "messages", "clients", "projects", "quotes", "invoices", "ricevute", "documents", "calendar", "planner", "notes", "channels", "security"].map((k) => k === "ricevute" ? `<a href="/ricevute">${icon("invoices")}Ricevute</a>` : `<a href="#${k}" class="${route === k ? "active" : ""}" ${route === k ? 'aria-current="page"' : ""}>${icon(k)}${labels[k]}</a>`).join("")}</nav><div class="sidebar-bottom"><div class="nav-label">IL TUO BUSINESS, IN ORDINE.</div><div class="account"><span class="avatar">${esc((state.settings.owner_name || "RS").slice(0, 2).toUpperCase())}</span><div>${esc(state.settings.owner_name || "Il tuo workspace")}<small>Consulente indipendente</small></div></div></div></aside><main class="main"><header class="topbar"><div class="topbar-head"><a class="back-site" href="/">Torna al sito</a><div class="crumb">Workspace <span>/ &nbsp; ${labels[route]}</span></div></div><div class="top-right"><button type="button" class="agent-launch" data-action="agent-open" aria-controls="buffy-panel" aria-expanded="false"><span class="agent-launch-mark" aria-hidden="true">B</span><span class="agent-launch-label">Buffy</span></button><span class="local-status"><i class="status-dot"></i>Archivio locale</span>${btn("Esci", "logout", "", "secondary small")}<button type="button" class="theme-toggle" id="theme-toggle" aria-label="Cambia tema" aria-pressed="${document.documentElement.classList.contains("dark-mode")}"><svg class="theme-icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg><svg class="theme-icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button><button type="button" class="nav-toggle" data-action="menu-toggle" aria-controls="crm-menu" aria-expanded="false" aria-label="Apri il menu"><span class="nav-toggle-bars" aria-hidden="true"></span></button></div></header><div class="content" id="content"></div></main></div>`;
   renderContent();
   if (pendingToast) {
     const t = pendingToast;
@@ -431,6 +463,7 @@ function renderContent() {
     notes,
     messages: messagesView,
     channels: channelsView,
+    security: securityView,
   };
   $("#content").innerHTML = views[route]();
   if (route === "dashboard" && (!state.settings.tax_regime || !state.settings.vat_number)) {
@@ -987,6 +1020,40 @@ function planner() {
     )
   );
 }
+/**
+ * Cambio password dall'app. Sta in una pagina sua e non nelle vecchie
+ * Impostazioni: quella pagina non è più nel menu da quando il titolare
+ * configura il workspace parlando con Buffy, e un pannello lì non sarebbe
+ * raggiungibile.
+ */
+function securityView() {
+  return (
+    title("Accesso al workspace.", "La password che protegge clienti, documenti e fatture.") +
+    panel(
+      "Cambia password",
+      `<div class="panel-body"><form id="password-form" class="form-grid">${field(
+        "Password attuale",
+        "current",
+        "password",
+        "",
+        'required maxlength="256" autocomplete="current-password"',
+      )}${field(
+        "Nuova password",
+        "password",
+        "password",
+        "",
+        'required minlength="12" maxlength="256" autocomplete="new-password"',
+      )}${field(
+        "Ripeti la nuova password",
+        "confirm",
+        "password",
+        "",
+        'required minlength="12" maxlength="256" autocomplete="new-password"',
+      )}<div class="error" role="alert"></div><div class="form-actions"><button class="primary" type="submit">Cambia password</button></div></form><p class="hint">Almeno 12 caratteri. Cambiandola si chiudono le sessioni aperte sugli altri dispositivi; questa resta attiva. Se non ricordi quella attuale, usa «Reimposta password.command» dal computer del gestionale.</p></div>`,
+    )
+  );
+}
+
 function settingsView() {
   const s = state.settings;
   const integ = state.integrations || { google: {}, apple: {} };
@@ -1242,6 +1309,29 @@ function bindView() {
         toast("Impostazioni salvate.");
       } catch (e) {
         $(".error", f).textContent = e.message;
+      } finally {
+        b.disabled = false;
+      }
+    };
+  if ($("#password-form"))
+    $("#password-form").onsubmit = async (e) => {
+      e.preventDefault();
+      const f = e.target,
+        d = Object.fromEntries(new FormData(f)),
+        errore = $(".error", f);
+      if (d.password !== d.confirm) {
+        errore.textContent = "Le password non coincidono.";
+        return;
+      }
+      const b = $("[type=submit]", f);
+      b.disabled = true;
+      errore.textContent = "";
+      try {
+        await api("/api/password", { current: d.current, password: d.password });
+        f.reset();
+        toast("Password aggiornata: le altre sessioni sono state chiuse.");
+      } catch (err) {
+        errore.textContent = err.message;
       } finally {
         b.disabled = false;
       }

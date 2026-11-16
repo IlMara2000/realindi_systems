@@ -10,11 +10,13 @@ import {
   CLEAR_COOKIE,
   DEFAULTS,
   auth,
+  changePassword,
   destroySession,
   ensureDefaults,
   hasPassword,
   parseCookie,
   prisma,
+  RateLimited,
   settings,
   setupPassword,
   verifyLogin,
@@ -129,6 +131,15 @@ function send(
 
 function sendError(status: number, message: string): HandlerResponse {
   return send({ error: message }, status);
+}
+
+/**
+ * Attesa leggibile del blocco tentativi. Arrotonda per eccesso: dire «1 minuto»
+ * quando ne restano 20 secondi è meglio che dire «0 minuti».
+ */
+function retryAfterLabel(attesaSecondi: number): string {
+  const minuti = Math.ceil(attesaSecondi / 60);
+  return minuti <= 1 ? "Riprova tra meno di un minuto." : `Riprova tra ${minuti} minuti.`;
 }
 
 /**
@@ -1055,7 +1066,11 @@ async function handlePost(req: HandlerRequest): Promise<HandlerResponse> {
       if (password.length < 12) throw new Invalid("Usa una password di almeno 12 caratteri.");
       try {
         const res = await setupPassword(password);
-        return send({ ok: true }, 200, "application/json; charset=utf-8", [["Set-Cookie", res.cookie]]);
+        // Il codice di emergenza esiste solo in questa risposta: il client lo
+        // mostra una volta e nel database resta l'hash.
+        return send({ ok: true, emergenza: res.emergenza }, 200, "application/json; charset=utf-8", [
+          ["Set-Cookie", res.cookie],
+        ]);
       } catch (err) {
         // Setup arrivato mentre un altro stava già configurando l'account.
         if ((err as Error).message === "ALREADY_SET") throw new Invalid("Configurazione già completata.");
@@ -1068,7 +1083,10 @@ async function handlePost(req: HandlerRequest): Promise<HandlerResponse> {
     } catch (err) {
       const code = (err as Error).message;
       if (code === "NO_PASSWORD") throw new Invalid("Configura prima il tuo account.");
-      if (code === "RATE_LIMITED") throw new Invalid("Troppi tentativi. Riprova tra 15 minuti.");
+      if (code === "RATE_LIMITED") {
+        const attesa = err instanceof RateLimited ? err.attesaSecondi : 900;
+        throw new Invalid(`Troppi tentativi. ${retryAfterLabel(attesa)}`);
+      }
       if (code === "BAD_PASSWORD") throw new Invalid("Password non corretta.");
       throw err;
     }
@@ -1391,6 +1409,22 @@ async function handlePost(req: HandlerRequest): Promise<HandlerResponse> {
       return sendError(502, "Invio email fallito: riprova più tardi.");
     }
     return send({ ok: true });
+  }
+
+  if (path === "/api/password") {
+    const current = requiredField(d, "current", 256);
+    const next = requiredField(d, "password", 256);
+    // La lunghezza minima la controlla changePassword: qui si traduce solo.
+    try {
+      const cookie = await changePassword(current, next);
+      return send({ ok: true }, 200, "application/json; charset=utf-8", [["Set-Cookie", cookie]]);
+    } catch (err) {
+      const code = (err as Error).message;
+      if (code === "NO_PASSWORD") throw new Invalid("Configura prima il tuo account.");
+      if (code === "BAD_PASSWORD") throw new Invalid("La password attuale non è corretta.");
+      if (code === "TOO_SHORT") throw new Invalid("Usa una password di almeno 12 caratteri.");
+      throw err;
+    }
   }
 
   if (path === "/api/logout") {

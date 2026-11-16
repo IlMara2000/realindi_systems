@@ -2,7 +2,7 @@
 // Il dump resta in dialetto SQLite con lo stesso DDL: manage.restore del vecchio
 // CRM lo riesegue intatto (le righe di sessioni/login/password non esportate).
 import JSZip from "jszip";
-import { prisma } from "./db.js";
+import { CHIAVI_CREDENZIALI, prisma } from "./db.js";
 
 // Limite di risposta di Vercel: 4.5 MB. Restiamo sotto con un margine sicuro.
 const MAX_ZIP_BYTES = 4.4 * 1024 * 1024;
@@ -97,7 +97,7 @@ export async function buildBackup(): Promise<Buffer> {
 
   const lines: string[] = [DDL];
   for (const row of settingsRows) {
-    if (row.key === "password") continue; // le credenziali non viaggiano nel backup
+    if (CHIAVI_CREDENZIALI.has(row.key)) continue; // le credenziali non viaggiano nel backup
     lines.push(insert("settings", ["key", "value"], row));
   }
   for (const row of clients) lines.push(insert("clients", CLIENT_COLUMNS, row));

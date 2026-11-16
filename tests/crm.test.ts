@@ -108,6 +108,7 @@ describe("CRM", () => {
     expect(clients.n).toBe(1);
     const password = db.prepare("SELECT value FROM settings WHERE key='password'").get();
     expect(password).toBeUndefined();
+    expect(db.prepare("SELECT value FROM settings WHERE key='password_emergenza'").get()).toBeUndefined();
     db.close();
     expect(sql).not.toContain("Test-password");
   });
@@ -280,6 +281,115 @@ describe("CRM", () => {
     const loser = passwords.findIndex((_, i) => i !== winner);
     const denied = await makeClient(base).request("/api/login", { password: passwords[loser] });
     expect(denied.status).toBe(400);
+  });
+
+  it("il codice di emergenza del setup entra al posto della password", async () => {
+    const c = makeClient(base);
+    const setup = await c.setup();
+    const codice = setup.body.emergenza as string;
+    expect(codice.startsWith("em-")).toBe(true);
+    expect(codice.length).toBeGreaterThan(30);
+
+    // Entra come la password...
+    expect((await makeClient(base).request("/api/login", { password: codice })).status).toBe(200);
+    // ...e non sostituisce la password normale.
+    expect((await makeClient(base).request("/api/login", { password: "Test-password-123!" })).status).toBe(200);
+
+    // Non è leggibile dall'app: né nelle impostazioni né nello stato.
+    const stato = await c.state();
+    expect(stato.settings.password_emergenza).toBeUndefined();
+    expect(JSON.stringify(stato)).not.toContain(codice);
+
+    // E non viaggia nemmeno nel backup.
+    const backup = await c.request("/api/backup");
+    const { sql } = await extractBackup(backup.bytes);
+    expect(sql).not.toContain(codice);
+    expect(sql).not.toContain("password_emergenza");
+  });
+
+  it("dieci errori non bloccano la password giusta e azzerano il contatore", async () => {
+    await fresh();
+    const sbagliata = makeClient(base);
+
+    for (let i = 0; i < 9; i++) {
+      const r = await sbagliata.request("/api/login", { password: "password-sbagliata" });
+      expect(r.status).toBe(400);
+      expect(r.body.error).toBe("Password non corretta.");
+    }
+
+    // Il decimo errore supera il limite: il messaggio dice quanto manca.
+    const decimo = await sbagliata.request("/api/login", { password: "password-sbagliata" });
+    expect(decimo.status).toBe(400);
+    expect(String(decimo.body.error)).toMatch(
+      /^Troppi tentativi\. Riprova tra (\d+ minuti|meno di un minuto)\.$/,
+    );
+
+    // La password corretta entra anche con il contatore oltre il limite, e lo azzera.
+    const giusta = await makeClient(base).request("/api/login", { password: "Test-password-123!" });
+    expect(giusta.status).toBe(200);
+    expect((await sql("SELECT COUNT(*)::int AS n FROM login_attempts"))[0].n).toBe(0);
+  });
+
+  it("il blocco riporta i minuti che restano, non sempre quindici", async () => {
+    await fresh();
+    // Un errore crea la riga dell'IP, poi la si porta oltre il limite con due
+    // minuti di finestra residua: il messaggio deve dire 2, non 15.
+    await makeClient(base).request("/api/login", { password: "password-sbagliata" });
+    const [{ ip }] = await sql("SELECT ip FROM login_attempts");
+    await sql("UPDATE login_attempts SET count = 10, reset = $1 WHERE ip = $2", [
+      Date.now() / 1000 + 120,
+      ip,
+    ]);
+
+    const risposta = await makeClient(base).request("/api/login", { password: "password-sbagliata" });
+    expect(risposta.status).toBe(400);
+    expect(risposta.body.error).toBe("Troppi tentativi. Riprova tra 2 minuti.");
+  });
+
+  it("cambio password: richiede quella attuale e chiude le altre sessioni", async () => {
+    const a = await fresh();
+    const b = makeClient(base);
+    expect((await b.request("/api/login", { password: "Test-password-123!" })).status).toBe(200);
+    expect((await b.request("/api/state")).status).toBe(200);
+
+    // Senza sessione il cambio non è raggiungibile.
+    const anonimo = await makeClient(base).request(
+      "/api/password",
+      { current: "Test-password-123!", password: "Nuova-password-456!" },
+      { public: true },
+    );
+    expect(anonimo.status).toBe(400);
+
+    // Password attuale sbagliata: non cambia niente.
+    const sbagliata = await a.request("/api/password", {
+      current: "non-questa",
+      password: "Nuova-password-456!",
+    });
+    expect(sbagliata.status).toBe(400);
+    expect(sbagliata.body.error).toBe("La password attuale non è corretta.");
+    expect((await makeClient(base).request("/api/login", { password: "Test-password-123!" })).status).toBe(200);
+
+    // Nuova password troppo corta.
+    const corta = await a.request("/api/password", {
+      current: "Test-password-123!",
+      password: "corta",
+    });
+    expect(corta.status).toBe(400);
+    expect((await makeClient(base).request("/api/login", { password: "Test-password-123!" })).status).toBe(200);
+
+    const cambio = await a.request("/api/password", {
+      current: "Test-password-123!",
+      password: "Nuova-password-456!",
+    });
+    expect(cambio.status).toBe(200);
+
+    // Il browser che ha chiesto il cambio ha una sessione nuova...
+    expect((await a.request("/api/state")).status).toBe(200);
+    // ...le altre sono chiuse...
+    expect((await b.request("/api/state")).status).toBe(401);
+    // ...e la vecchia password non entra più.
+    expect((await makeClient(base).request("/api/login", { password: "Test-password-123!" })).status).toBe(400);
+    expect((await makeClient(base).request("/api/login", { password: "Nuova-password-456!" })).status).toBe(200);
   });
 
   it("sicurezza e validazione", async () => {

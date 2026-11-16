@@ -4,7 +4,7 @@
 // bloccare l'accesso.
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { startServer, type RunningServer } from "../scripts/dev-server.js";
-import { reimpostaPassword } from "../scripts/reimposta-password.js";
+import { reimpostaPassword, statoAccesso } from "../scripts/reimposta-password.js";
 import { makeClient, resetDb, sql } from "./helpers.js";
 
 const VECCHIA = "Vecchia-password-123!";
@@ -77,18 +77,31 @@ describe("reimposta password", () => {
     expect((await sql("SELECT COUNT(*)::int AS n FROM sessions"))[0].n).toBe(0);
   });
 
-  it("azzera il blocco dei tentativi falliti", async () => {
+  it("la reimpostazione sostituisce anche il codice di emergenza", async () => {
+    const c = makeClient(base);
+    const setup = await c.setup(VECCHIA);
+    const vecchio = setup.body.emergenza as string;
+    expect((await makeClient(base).request("/api/login", { password: vecchio })).status).toBe(200);
+
+    const esito = await reimpostaPassword(databaseUrl(), NUOVA);
+    expect(esito.codiceEmergenza.startsWith("em-")).toBe(true);
+    expect(esito.codiceEmergenza).not.toBe(vecchio);
+
+    // Quello vecchio non vale più, quello nuovo entra senza terminale.
+    expect((await makeClient(base).request("/api/login", { password: vecchio })).status).toBe(400);
+    expect((await makeClient(base).request("/api/login", { password: esito.codiceEmergenza })).status).toBe(
+      200,
+    );
+  });
+
+  it("azzera i tentativi falliti", async () => {
     await protetto();
 
-    // Dieci errori: da qui l'IP resta fermo anche con la password giusta.
     const sbagliata = makeClient(base);
     for (let i = 0; i < 10; i++) {
       const r = await sbagliata.request("/api/login", { password: "password-sbagliata" });
       expect(r.status).toBe(400);
     }
-    const bloccato = await makeClient(base).request("/api/login", { password: VECCHIA });
-    expect(bloccato.status).toBe(400);
-    expect(String(bloccato.body.error)).toContain("Troppi tentativi");
     expect((await sql("SELECT COUNT(*)::int AS n FROM login_attempts"))[0].n).toBe(1);
 
     await reimpostaPassword(databaseUrl(), NUOVA);
@@ -96,6 +109,81 @@ describe("reimposta password", () => {
     expect((await sql("SELECT COUNT(*)::int AS n FROM login_attempts"))[0].n).toBe(0);
     const dopo = await makeClient(base).request("/api/login", { password: NUOVA });
     expect(dopo.status).toBe(200);
+  });
+
+  it("lo stato dice password, sessioni e blocchi senza modificare niente", async () => {
+    const c = makeClient(base);
+    await c.setup(VECCHIA);
+    expect((await makeClient(base).request("/api/login", { password: VECCHIA })).status).toBe(200);
+
+    // Un IP oltre la soglia, con due minuti di finestra residua.
+    await sql(
+      "INSERT INTO login_attempts (ip, count, reset) VALUES ('10.0.0.9', 12, $1)",
+      [Date.now() / 1000 + 120],
+    );
+
+    const prima = await sql(
+      "SELECT (SELECT COUNT(*) FROM sessions)::int AS sessioni, (SELECT value FROM settings WHERE key = 'password') AS password",
+    );
+    const stato = await statoAccesso(databaseUrl());
+    const dopo = await sql(
+      "SELECT (SELECT COUNT(*) FROM sessions)::int AS sessioni, (SELECT value FROM settings WHERE key = 'password') AS password",
+    );
+
+    expect(stato.passwordPresente).toBe(true);
+    expect(stato.emergenzaPresente).toBe(true);
+    expect(stato.sessioniAttive).toBe(2);
+    expect(stato.bloccati).toHaveLength(1);
+    expect(stato.bloccati[0].ip).toBe("10.0.0.9");
+    expect(stato.bloccati[0].tentativi).toBe(12);
+    expect(stato.bloccati[0].secondiResidui).toBeGreaterThan(100);
+    expect(stato.bloccati[0].secondiResidui).toBeLessThanOrEqual(120);
+
+    // Sola lettura: sessioni e hash della password sono identici.
+    expect(dopo).toEqual(prima);
+  });
+
+  it("un X-Forwarded-For forgiato non sposta il conteggio né la diagnosi", async () => {
+    await protetto();
+    // Dieci errori con un «IP» diverso nell'header: se la chiave venisse
+    // dall'header sarebbero dieci bucket distinti e il blocco non scatterebbe
+    // mai. Deve contare l'indirizzo della connessione, uno solo.
+    for (let i = 0; i < 10; i++) {
+      const r = await makeClient(base).request(
+        "/api/login",
+        { password: "password-sbagliata" },
+        { public: true, headers: { "X-Forwarded-For": `203.0.113.${i + 1}` } },
+      );
+      expect(r.status).toBe(400);
+    }
+
+    const righe = await sql("SELECT ip, count FROM login_attempts");
+    expect(righe).toHaveLength(1);
+    expect(righe[0].ip).toBe("127.0.0.1");
+    expect(righe[0].count).toBe(10);
+
+    // La diagnosi riporta lo stesso IP che il login ha contato.
+    const stato = await statoAccesso(databaseUrl());
+    expect(stato.bloccati).toHaveLength(1);
+    expect(stato.bloccati[0].ip).toBe(righe[0].ip);
+    expect(stato.bloccati[0].tentativi).toBe(10);
+  });
+
+  it("lo stato di un workspace mai configurato non inventa nulla", async () => {
+    expect(await statoAccesso(databaseUrl())).toEqual({
+      passwordPresente: false,
+      emergenzaPresente: false,
+      sessioniAttive: 0,
+      bloccati: [],
+    });
+  });
+
+  it("un blocco scaduto non risulta tra gli IP fermati", async () => {
+    await protetto();
+    await sql("INSERT INTO login_attempts (ip, count, reset) VALUES ('10.0.0.9', 12, $1)", [
+      Date.now() / 1000 - 60,
+    ]);
+    expect((await statoAccesso(databaseUrl())).bloccati).toHaveLength(0);
   });
 
   it("su un workspace senza password la crea", async () => {

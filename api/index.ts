@@ -2,6 +2,7 @@
 // Il rewrite di vercel.json porta /api/qualcosa → /api?path=qualcosa;
 // il path originale viene ricostruito qui prima di passarlo al handler.
 import { handle } from "../src/handler.js";
+import { clientIp } from "../src/util.js";
 
 interface VercelRequest {
   url?: string;
@@ -69,15 +70,15 @@ export default async function apiHandler(
   const apiPath = pagePath ?? (segments ? `/api/${segments}` : "/api/");
   url.searchParams.delete("path");
 
-  const forwarded = headerValue(req.headers["x-forwarded-for"]);
-  const ip =
-    (forwarded ? forwarded.split(",")[0].trim() : undefined) ??
-    req.socket?.remoteAddress ??
-    "127.0.0.1";
   const headers: Record<string, string | undefined> = {};
   for (const [key, value] of Object.entries(req.headers)) {
     headers[key] = headerValue(value);
   }
+  // L'IP lo imposta la piattaforma: gli header si leggono solo qui, non nel
+  // server di sviluppo, dove sarebbero scrivibili da chi fa la richiesta.
+  const ip = clientIp(headers, req.socket?.remoteAddress, {
+    dietroProxy: process.env.VERCEL === "1",
+  });
   const out = await handle({
     method: req.method ?? "GET",
     path: apiPath,

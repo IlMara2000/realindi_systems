@@ -4,6 +4,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { pathToFileURL } from "node:url";
 import { handle } from "../src/handler.js";
+import { clientIp } from "../src/util.js";
 
 export interface RunningServer {
   server: Server;
@@ -30,7 +31,9 @@ export function startServer(
         query: url.search.slice(1),
         headers,
         body: Buffer.concat(chunks),
-        ip: req.socket.remoteAddress ?? "127.0.0.1",
+        // Nessun proxy fidato in locale: gli header non contano, vale la
+        // connessione (altrimenti chiunque potrebbe fingere un altro IP).
+        ip: clientIp(headers, req.socket.remoteAddress, { dietroProxy: false }),
       });
       res.statusCode = out.status;
       for (const [key, value] of out.headers) res.setHeader(key, value);
