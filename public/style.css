@@ -1327,6 +1327,24 @@ html::-webkit-scrollbar-corner {
 .auth-form .field {
   margin-top: 20px;
 }
+/* Login: come reimpostare la password. Chiuso di default, così non allarga il
+   modulo; aperto, il testo resta leggibile come il resto del modulo. */
+.auth-recovery {
+  margin-top: 14px;
+  font-size: 12px;
+}
+.auth-recovery summary {
+  cursor: pointer;
+  color: var(--ink);
+  font-weight: 600;
+  padding: 2px 0;
+}
+.auth-recovery p {
+  margin-top: 6px;
+}
+.auth-recovery code {
+  overflow-wrap: anywhere;
+}
 .auth-form .brand {
   display: none;
 }

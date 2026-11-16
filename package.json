@@ -14,6 +14,7 @@
     "diagnose:ai": "tsx scripts/diagnose-ai.ts",
     "test:locale": "bash scripts/test-locale.sh",
     "db:migrate-data": "tsx scripts/migrate-sqlite.ts",
+    "password:reimposta": "tsx scripts/reimposta-password.ts",
     "vercel-build": "npm run generate && tsc --noEmit"
   },
   "dependencies": {
