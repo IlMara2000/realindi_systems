@@ -4,19 +4,13 @@ import { Client as PgClient } from "pg";
 import JSZip from "jszip";
 import { DatabaseSync } from "node:sqlite";
 import { XMLParser } from "fast-xml-parser";
-import { svuotaTabelle } from "./test-db.js";
+import { svuotaTabelle, testUrlFromEnv } from "./test-db.js";
 
-// Puntare al database di test PRIMA di ogni uso di src/db.ts. L'URL lo decide
-// tests/global-setup.ts (il database di DATABASE_URL_TEST, sempre lo stesso):
-// leggerlo da qui evita che un DATABASE_URL di produzione nel file .env faccia
-// girare la suite sul gestionale vero.
-const runUrl = process.env.DATABASE_URL_TEST_RUN;
-if (!runUrl) {
-  throw new Error(
-    "DATABASE_URL_TEST_RUN assente: eseguire i test con vitest, che lo imposta in tests/global-setup.ts.",
-  );
-}
-process.env.DATABASE_URL = runUrl;
+// Puntare al database di test PRIMA di ogni uso di src/db.ts. L'URL viene da
+// tests/test-db.ts (il database di DATABASE_URL_TEST, sempre lo stesso): leggerlo
+// da qui evita che un DATABASE_URL di produzione nel file .env faccia girare la
+// suite sul gestionale vero.
+process.env.DATABASE_URL = testUrlFromEnv();
 
 /**
  * Limite esplicito per ogni richiesta della suite. Deve restare sotto il

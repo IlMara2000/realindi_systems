@@ -7,6 +7,7 @@
 // ne accorga.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { parse as parseDotenv } from "dotenv";
 import { Client } from "pg";
 
 /**
@@ -17,15 +18,15 @@ export function testUrlFromEnv(): string {
   const fromProcess = process.env.DATABASE_URL_TEST?.trim();
   if (fromProcess) return fromProcess;
 
+  // In CI non esiste un file .env: la variabile deve arrivare dall'ambiente.
   let text: string;
   try {
     text = readFileSync(resolve(process.cwd(), ".env"), "utf8");
   } catch {
-    // In CI non esiste un file .env: la variabile deve arrivare dall'ambiente.
     throw new Error("DATABASE_URL_TEST mancante: non è nell'ambiente e non c'è un file .env");
   }
-  const line = text.split("\n").find((l) => l.startsWith("DATABASE_URL_TEST="));
-  const url = line?.slice("DATABASE_URL_TEST=".length).trim();
+  const parsed = parseDotenv(text);
+  const url = parsed.DATABASE_URL_TEST?.trim();
   if (!url) throw new Error("DATABASE_URL_TEST mancante in .env");
   return url;
 }
@@ -65,7 +66,11 @@ export async function svuotaTabelle(connectionString: string): Promise<void> {
   await client.connect();
   try {
     const tabelle = await tabelleApplicative(client);
-    if (!tabelle.length) return;
+    if (!tabelle.length) {
+      throw new Error(
+        "Il database di test non ha tabelle applicative: le migrazioni non sono state applicate oppure DATABASE_URL_TEST punta al database sbagliato.",
+      );
+    }
     await client.query(`TRUNCATE TABLE ${tabelle.map(virgolette).join(", ")} RESTART IDENTITY CASCADE`);
   } finally {
     await client.end();

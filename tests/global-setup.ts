@@ -38,16 +38,13 @@ function applyMigrations(url: string): void {
   });
 }
 
-export async function setup(): Promise<() => Promise<void>> {
+export async function setup(): Promise<void> {
   const url = testUrlFromEnv();
   applyMigrations(url);
   // Ciò che ha lasciato una run interrotta non deve influire su questa.
   await svuotaTabelle(url);
 
-  // tests/helpers.ts usa questo URL: nessun test tocca realindi_test per
-  // sbaglio, nemmeno se DATABASE_URL nel file .env punta altrove.
-  process.env.DATABASE_URL_TEST_RUN = url;
-
-  // Niente da smontare: il database resta, è lo stesso per ogni run.
-  return async () => {};
+  // Nessun teardown: il database resta, è lo stesso per ogni run. L'URL che
+  // i test useranno non viene propagato da qui: tests/helpers.ts lo ricava da
+  // testUrlFromEnv(), così il worker non dipende dallo stato di questo processo.
 }

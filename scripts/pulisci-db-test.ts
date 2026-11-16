@@ -16,6 +16,7 @@
 // mai toccato: si eliminano solo nomi che iniziano con `realindi_test_run_`.
 import "dotenv/config";
 import { readFileSync } from "node:fs";
+import { parse as parseDotenv } from "dotenv";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
@@ -53,8 +54,7 @@ function testUrlFromEnv(): string {
   } catch {
     throw new Error("DATABASE_URL_TEST mancante: non è nell'ambiente e non c'è un file .env.");
   }
-  const line = text.split("\n").find((l) => l.startsWith("DATABASE_URL_TEST="));
-  const url = line?.slice("DATABASE_URL_TEST=".length).trim();
+  const url = parseDotenv(text).DATABASE_URL_TEST?.trim();
   if (!url) throw new Error("DATABASE_URL_TEST mancante in .env.");
   return url;
 }
