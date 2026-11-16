@@ -14,13 +14,10 @@
 // Usa DATABASE_URL_TEST: i database delle run nascono accanto a quello, quindi
 // è la connessione giusta per vederli. Il database indicato dall'URL non viene
 // mai toccato: si eliminano solo nomi che iniziano con `realindi_test_run_`.
-import "dotenv/config";
-import { readFileSync } from "node:fs";
-import { parse as parseDotenv } from "dotenv";
-import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
 import { Client } from "pg";
+import { testUrlFromEnv } from "../tests/test-db.js";
 
 const PREFIX = "realindi_test_run_";
 
@@ -41,22 +38,6 @@ export interface DatabaseTest {
   etaMs: number | null;
   /** true se una run potrebbe ancora usarlo. */
   recente: boolean;
-}
-
-/** DATABASE_URL_TEST dall'ambiente o, se lì non c'è, dal file .env. */
-function testUrlFromEnv(): string {
-  const fromProcess = process.env.DATABASE_URL_TEST?.trim();
-  if (fromProcess) return fromProcess;
-
-  let text: string;
-  try {
-    text = readFileSync(resolve(process.cwd(), ".env"), "utf8");
-  } catch {
-    throw new Error("DATABASE_URL_TEST mancante: non è nell'ambiente e non c'è un file .env.");
-  }
-  const url = parseDotenv(text).DATABASE_URL_TEST?.trim();
-  if (!url) throw new Error("DATABASE_URL_TEST mancante in .env.");
-  return url;
 }
 
 /** Host e nome del database, senza credenziali: serve a dire dove si agisce. */

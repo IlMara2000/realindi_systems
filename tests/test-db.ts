@@ -47,8 +47,7 @@ async function tabelleApplicative(client: Client): Promise<string[]> {
     `SELECT tablename
        FROM pg_tables
       WHERE schemaname = current_schema()
-        AND tablename NOT LIKE '\\_prisma%'
-      ORDER BY tablename`,
+        AND tablename NOT LIKE '\\_prisma%'`,
   );
   return result.rows.map((row) => row.tablename);
 }

@@ -15,11 +15,8 @@ import { sql } from "./helpers.js";
 describe("igiene dei database di test", () => {
   it("nessun database realindi_test_run_ sul server", async () => {
     const righe: { datname: string }[] = await sql(
-      "SELECT datname FROM pg_database WHERE datname LIKE 'realindi_test_run_%' ORDER BY datname",
+      "SELECT datname FROM pg_database WHERE datname LIKE 'realindi_test_run_%'",
     );
-    expect(
-      righe.map((riga) => riga.datname),
-      "residui delle vecchie run: esegui `npm run db:pulisci-test`",
-    ).toEqual([]);
+    expect(righe, "residui delle vecchie run: esegui `npm run db:pulisci-test`").toHaveLength(0);
   });
 });
