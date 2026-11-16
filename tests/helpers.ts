@@ -4,14 +4,16 @@ import { Client as PgClient } from "pg";
 import JSZip from "jszip";
 import { DatabaseSync } from "node:sqlite";
 import { XMLParser } from "fast-xml-parser";
+import { svuotaTabelle } from "./test-db.js";
 
-// Puntare al database della run PRIMA di ogni uso di src/db.ts. Il database lo
-// crea tests/global-setup.ts per ogni esecuzione: senza, la suite finirebbe sul
-// realindi_test condiviso e due run si troncherebbero le tabelle a vicenda.
+// Puntare al database di test PRIMA di ogni uso di src/db.ts. L'URL lo decide
+// tests/global-setup.ts (il database di DATABASE_URL_TEST, sempre lo stesso):
+// leggerlo da qui evita che un DATABASE_URL di produzione nel file .env faccia
+// girare la suite sul gestionale vero.
 const runUrl = process.env.DATABASE_URL_TEST_RUN;
 if (!runUrl) {
   throw new Error(
-    "DATABASE_URL_TEST_RUN assente: eseguire i test con vitest, che prepara il database della run in tests/global-setup.ts.",
+    "DATABASE_URL_TEST_RUN assente: eseguire i test con vitest, che lo imposta in tests/global-setup.ts.",
   );
 }
 process.env.DATABASE_URL = runUrl;
@@ -45,16 +47,11 @@ export interface TestClient {
   setup(password?: string): Promise<TestResponse>;
 }
 
+// Svuota tutte le tabelle applicative: è l'isolamento fra un test e l'altro,
+// ora che la suite usa sempre lo stesso database invece di crearne uno nuovo a
+// ogni run. Stesso codice dell'avvio della run (tests/test-db.ts).
 export async function resetDb(): Promise<void> {
-  const pg = new PgClient({ connectionString: process.env.DATABASE_URL });
-  await pg.connect();
-  try {
-    await pg.query(
-      "TRUNCATE TABLE settings, sessions, clients, projects, quotes, invoices, documents, appointments, blocks, login_attempts, login_events, notes, calendar_events, event_links, sync_state, sync_calendars, sync_channels, contacts, contact_links, sync_addressbooks, sync_conflicts, channels, conversations, messages, knowledge_docs, assistant_hits, receipts RESTART IDENTITY CASCADE",
-    );
-  } finally {
-    await pg.end();
-  }
+  await svuotaTabelle(process.env.DATABASE_URL!);
 }
 
 export function makeClient(base: string): TestClient {
