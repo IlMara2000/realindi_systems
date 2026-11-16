@@ -9,14 +9,20 @@ import { available, createAppointment } from "./booking.js";
 import {
   CLEAR_COOKIE,
   DEFAULTS,
+  accessiRecenti,
   auth,
   changePassword,
+  codiciDisponibili,
   destroySession,
   ensureDefaults,
   hasPassword,
+  nuoviCodiciEmergenza,
   parseCookie,
   prisma,
   RateLimited,
+  revocaAltreSessioni,
+  revocaSessione,
+  sessioniAttive,
   settings,
   setupPassword,
   verifyLogin,
@@ -742,6 +748,9 @@ async function handleGet(req: HandlerRequest): Promise<HandlerResponse> {
       appointments,
       blocks,
       notes: await p.note.findMany({ orderBy: [{ pinned: "desc" }, { updated_at: "desc" }] }),
+      accessi: await accessiRecenti(),
+      sessioni: await sessioniAttive(token),
+      codici_emergenza: await codiciDisponibili(),
       integrations: await integrationStatus(),
       settings: await settings(),
       fiscal_catalog: fiscal.catalog(),
@@ -1065,10 +1074,10 @@ async function handlePost(req: HandlerRequest): Promise<HandlerResponse> {
       if (await hasPassword()) throw new Invalid("Configurazione già completata.");
       if (password.length < 12) throw new Invalid("Usa una password di almeno 12 caratteri.");
       try {
-        const res = await setupPassword(password);
-        // Il codice di emergenza esiste solo in questa risposta: il client lo
-        // mostra una volta e nel database resta l'hash.
-        return send({ ok: true, emergenza: res.emergenza }, 200, "application/json; charset=utf-8", [
+        const res = await setupPassword(password, req.ip, req.headers["user-agent"] ?? "");
+        // I codici di emergenza esistono solo in questa risposta: il client li
+        // mostra una volta e nel database ne restano gli hash, monouso.
+        return send({ ok: true, codici: res.codici }, 200, "application/json; charset=utf-8", [
           ["Set-Cookie", res.cookie],
         ]);
       } catch (err) {
@@ -1078,7 +1087,7 @@ async function handlePost(req: HandlerRequest): Promise<HandlerResponse> {
       }
     }
     try {
-      const res = await verifyLogin(req.ip, password);
+      const res = await verifyLogin(req.ip, password, req.headers["user-agent"] ?? "");
       return send({ ok: true }, 200, "application/json; charset=utf-8", [["Set-Cookie", res.cookie]]);
     } catch (err) {
       const code = (err as Error).message;
@@ -1416,8 +1425,11 @@ async function handlePost(req: HandlerRequest): Promise<HandlerResponse> {
     const next = requiredField(d, "password", 256);
     // La lunghezza minima la controlla changePassword: qui si traduce solo.
     try {
-      const cookie = await changePassword(current, next);
-      return send({ ok: true }, 200, "application/json; charset=utf-8", [["Set-Cookie", cookie]]);
+      const res = await changePassword(current, next, req.ip, req.headers["user-agent"] ?? "");
+      // I nuovi codici di emergenza esistono solo in questa risposta, come al setup.
+      return send({ ok: true, codici: res.codici }, 200, "application/json; charset=utf-8", [
+        ["Set-Cookie", res.cookie],
+      ]);
     } catch (err) {
       const code = (err as Error).message;
       if (code === "NO_PASSWORD") throw new Invalid("Configura prima il tuo account.");
@@ -1425,6 +1437,26 @@ async function handlePost(req: HandlerRequest): Promise<HandlerResponse> {
       if (code === "TOO_SHORT") throw new Invalid("Usa una password di almeno 12 caratteri.");
       throw err;
     }
+  }
+
+  if (path === "/api/emergenza") {
+    // Rigenerare i codici invalida i precedenti: si mostrano una volta sola.
+    return send({ ok: true, codici: await nuoviCodiciEmergenza() });
+  }
+
+  if (path === "/api/sessions/revoke") {
+    const id = requiredField(d, "id", 32);
+    try {
+      await revocaSessione(id);
+    } catch (err) {
+      if ((err as Error).message === "SESSIONE_NON_VALIDA") throw new Invalid("Sessione non valida.");
+      throw err;
+    }
+    return send({ ok: true });
+  }
+
+  if (path === "/api/sessions/revoke-others") {
+    return send({ ok: true, chiuse: await revocaAltreSessioni(sessionToken) });
   }
 
   if (path === "/api/logout") {

@@ -1345,6 +1345,19 @@ html::-webkit-scrollbar-corner {
 .auth-recovery code {
   overflow-wrap: anywhere;
 }
+/* Codici di emergenza: sono più di uno, quindi un elenco compatto e monospaziato
+   che va a capo invece di allargare il modulo. */
+.codice-lista {
+  margin: 14px 0 0;
+  padding: 12px 12px 12px 30px;
+  background: #f1f4f9;
+  border-radius: 7px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.codice-lista code {
+  overflow-wrap: anywhere;
+}
 .auth-form .brand {
   display: none;
 }
@@ -2266,6 +2279,7 @@ dialog::backdrop {
 
   .totals,
   .link-box,
+  .codice-lista,
   .estimate-result {
     background: var(--bg);
     box-shadow: var(--inset);

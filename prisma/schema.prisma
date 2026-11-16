@@ -18,9 +18,16 @@ model Setting {
   @@map("settings")
 }
 
+// Sessione aperta. Il token nel cookie non è mai salvato: resta l'hash. Le
+// colonne di contesto servono al pannello Sicurezza — da dove è nata la sessione
+// e quando è stata usata l'ultima volta — e a poterla chiudere una per una.
 model Session {
-  token   String @id
-  expires Float
+  token      String @id
+  expires    Float
+  ip         String @default("")
+  user_agent String @default("")
+  created_at Float  @default(0)
+  last_seen  Float  @default(0)
   @@map("sessions")
 }
 
@@ -146,6 +153,19 @@ model LoginAttempt {
   count Int
   reset Float
   @@map("login_attempts")
+}
+
+// Accessi riusciti: chi è entrato, quando, da quale IP e con quale credenziale.
+// Alimenta il pannello Sicurezza, che segnala gli indirizzi mai visti prima.
+// `at` è in millisecondi UTC come assistant_hits. Non finisce nel backup: è
+// storia dell'istanza, non un dato del CRM.
+model LoginEvent {
+  id  Int    @id @default(autoincrement())
+  at  Float
+  ip  String
+  via String
+  @@index([at])
+  @@map("login_events")
 }
 
 // Sezioni nuove: Note e Calendario/Planner (spec 2026-11-03).

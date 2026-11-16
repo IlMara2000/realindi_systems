@@ -5,7 +5,9 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client.js";
 import * as fiscal from "./fiscal.js";
 import {
+  CODICI_EMERGENZA,
   LIMITE_TENTATIVI_LOGIN,
+  hashCodice,
   hashPassword,
   sha256Hex,
   timingSafeEqualStr,
@@ -84,18 +86,28 @@ export function ensureDefaults(): Promise<void> {
 export const CHIAVI_CREDENZIALI = new Set(["password", "password_emergenza"]);
 
 /**
- * Codice di emergenza: credenziale alternativa allo stesso livello della
- * password, generata e mostrata una volta sola. Il prefisso serve solo a
- * riconoscerla nel gestore password — l'entropia sta nei byte casuali.
+ * Codici di emergenza monouso: credenziali alternative alla password,
+ * generate e mostrate una volta sola. Il prefisso serve solo a riconoscerle
+ * nel gestore password — l'entropia sta nei byte casuali.
  */
-function generaCodiceEmergenza(): string {
-  return `em-${tokenUrlSafe(24)}`;
+function generaCodiciEmergenza(): string[] {
+  return Array.from({ length: CODICI_EMERGENZA }, () => `em-${tokenUrlSafe(24)}`);
 }
 
-/** Valore da salvare per una credenziale: sale nuovo + hash, come il login. */
+/** Valore da salvare per la password: sale nuovo + hash, come il login. */
 function credenzialeHash(segreto: string): string {
   const salt = tokenHex(16);
   return JSON.stringify([salt, hashPassword(segreto, salt)]);
+}
+
+/** Valore da salvare per i codici: un [sale, hash] per ciascuno, nessuno in chiaro. */
+function codiciHash(codici: string[]): string {
+  return JSON.stringify(
+    codici.map((codice) => {
+      const salt = tokenHex(16);
+      return [salt, hashCodice(codice, salt)];
+    }),
+  );
 }
 
 /** Confronto a tempo costante fra un segreto in chiaro e la riga salvata. */
@@ -103,6 +115,88 @@ function corrisponde(segreto: string, riga: { value: string } | null): boolean {
   if (!riga) return false;
   const [salt, saved] = JSON.parse(riga.value) as [string, string];
   return timingSafeEqualStr(hashPassword(segreto, salt), saved);
+}
+
+/**
+ * Consuma un codice di emergenza: se combacia viene tolto dalla lista, quindi
+ * quel codice non vale più. L'aggiornamento è condizionato al valore appena
+ * letto, così due login simultanei con lo stesso codice non riescono entrambi.
+ */
+async function consumaCodiceEmergenza(codice: string): Promise<boolean> {
+  const p = prisma();
+  const riga = await p.setting.findUnique({ where: { key: "password_emergenza" } });
+  if (!riga) return false;
+  const salvati = JSON.parse(riga.value) as [string, string][];
+  const indice = salvati.findIndex(([salt, hash]) =>
+    timingSafeEqualStr(hashCodice(codice, salt), hash),
+  );
+  if (indice === -1) return false;
+  const rimosso = await p.setting.updateMany({
+    where: { key: "password_emergenza", value: riga.value },
+    data: { value: JSON.stringify(salvati.filter((_, i) => i !== indice)) },
+  });
+  return rimosso.count === 1;
+}
+
+/** Un accesso riuscito, come lo mostra il pannello Sicurezza. */
+export interface Accesso {
+  /** Millisecondi UTC: il client lo formatta direttamente. */
+  at: number;
+  ip: string;
+  via: "password" | "codice";
+  /** Primo accesso in assoluto da questo IP (il primo di tutti non conta). */
+  nuovo: boolean;
+}
+
+/** Quanti accessi mostra il pannello. */
+const ACCESSI_MOSTRATI = 8;
+
+/** Quanti accessi si conservano: è uno storico, non un archivio. */
+const ACCESSI_CONSERVATI = 100;
+
+/**
+ * Registra un accesso riuscito e tiene la tabella corta: oltre le ultime cento
+ * righe si cancellano le più vecchie, altrimenti crescerebbe a ogni login.
+ */
+async function registraAccesso(ip: string, via: Accesso["via"]): Promise<void> {
+  try {
+    const p = prisma();
+    await p.loginEvent.create({ data: { at: Date.now(), ip, via } });
+    const vecchi = await p.loginEvent.findMany({
+      orderBy: { id: "desc" },
+      skip: ACCESSI_CONSERVATI,
+      select: { id: true },
+    });
+    if (vecchi.length) {
+      await p.loginEvent.deleteMany({ where: { id: { in: vecchi.map((row) => row.id) } } });
+    }
+  } catch (err) {
+    // Lo storico non deve mai impedire di entrare: una migrazione non ancora
+    // applicata o un errore di scrittura si legge nei log, non blocca il login.
+    console.error("Accesso non registrato:", (err as Error)?.message);
+  }
+}
+
+/**
+ * Accessi riusciti recenti, dal più nuovo. `nuovo` marca chi arriva da un IP
+ * mai comparso prima: è il segnale da guardare. Il primo accesso in assoluto
+ * non è «nuovo» — non esiste un prima con cui confrontarlo, e segnalarlo
+ * dipingerebbe come sospetto il setup appena fatto.
+ */
+export async function accessiRecenti(): Promise<Accesso[]> {
+  const p = prisma();
+  const [righe, prime] = await Promise.all([
+    p.loginEvent.findMany({ orderBy: { id: "desc" }, take: ACCESSI_MOSTRATI }),
+    p.loginEvent.groupBy({ by: ["ip"], _min: { id: true } }),
+  ]);
+  const primoDa = new Map(prime.map((row) => [row.ip, row._min.id]));
+  const primoInAssoluto = Math.min(...prime.map((row) => row._min.id ?? Infinity));
+  return righe.map((row) => ({
+    at: row.at,
+    ip: row.ip,
+    via: row.via as Accesso["via"],
+    nuovo: primoDa.get(row.ip) === row.id && row.id !== primoInAssoluto,
+  }));
 }
 
 export async function settings(): Promise<Record<string, any>> {
@@ -119,11 +213,46 @@ export async function hasPassword(): Promise<boolean> {
   return (await prisma().setting.findUnique({ where: { key: "password" } })) !== null;
 }
 
-/** Auth: il cookie crm_session viene conservato come sha256, scadenza in epoch secondi. */
+/** Durata di una sessione: dodici ore dall'apertura. */
+const DURATA_SESSIONE = 43200;
+
+/**
+ * Auth: il cookie crm_session viene conservato come sha256, scadenza in epoch
+ * secondi. Aggiorna anche l'ultimo utilizzo, ma non a ogni richiesta: basta il
+ * minuto, altrimenti si scriverebbe sul database per ogni vista.
+ */
 export async function auth(token: string | null): Promise<boolean> {
   if (!token) return false;
-  const row = await prisma().session.findUnique({ where: { token: sha256Hex(token) } });
-  return row !== null && row.expires > Date.now() / 1000;
+  const hash = sha256Hex(token);
+  const row = await prisma().session.findUnique({ where: { token: hash } });
+  const now = Date.now() / 1000;
+  if (!row || row.expires <= now) return false;
+  if (now - row.last_seen > 60) {
+    await prisma()
+      .session.update({ where: { token: hash }, data: { last_seen: now } })
+      .catch(() => undefined);
+  }
+  return true;
+}
+
+/**
+ * Apre una sessione con il contesto da cui è nata (IP, browser) e restituisce
+ * il cookie da mandare al client. Il token in chiaro esiste solo qui.
+ */
+async function creaSessione(ip: string, userAgent: string): Promise<string> {
+  const token = tokenUrlSafe(32);
+  const now = Date.now() / 1000;
+  await prisma().session.create({
+    data: {
+      token: sha256Hex(token),
+      expires: now + DURATA_SESSIONE,
+      ip,
+      user_agent: userAgent.slice(0, 300),
+      created_at: now,
+      last_seen: now,
+    },
+  });
+  return sessionCookie(token, DURATA_SESSIONE);
 }
 
 export function parseCookie(header: string | undefined, name: string): string | null {
@@ -169,25 +298,24 @@ export class RateLimited extends Error {
  * volta riceve l'attesa residua, e ogni tentativo costa comunque un pbkdf2
  * completo, quindi il conteggio non diventa un modo per indovinare più in fretta.
  */
-export async function verifyLogin(ip: string, password: string): Promise<LoginResult> {
+export async function verifyLogin(ip: string, password: string, userAgent = ""): Promise<LoginResult> {
   const p = prisma();
   const stored = await p.setting.findUnique({ where: { key: "password" } });
   if (!stored) throw new Error("NO_PASSWORD");
   const now = Date.now() / 1000;
 
-  // Due credenziali ammesse: la password e il codice di emergenza. Il codice si
-  // prova solo se la password non combacia, così l'accesso normale costa un
-  // solo pbkdf2; un errore costa comunque il doppio, mai zero.
-  const valida =
-    corrisponde(password, stored) ||
-    corrisponde(password, await p.setting.findUnique({ where: { key: "password_emergenza" } }));
+  // La password si verifica per prima, con un solo pbkdf2. Solo se non combacia
+  // si prova uno dei codici monouso: l'hash è veloce e, se vale, si consuma.
+  // `daPassword` resta com'era prima dei due test, così lo storico può dire
+  // con quale credenziale si è entrati.
+  const daPassword = corrisponde(password, stored);
+  const valida = daPassword || (await consumaCodiceEmergenza(password));
 
   if (valida) {
     await p.loginAttempt.delete({ where: { ip } }).catch(() => undefined);
-    const token = tokenUrlSafe(32);
+    await registraAccesso(ip, daPassword ? "password" : "codice");
     await p.session.deleteMany({ where: { expires: { lt: now } } });
-    await p.session.create({ data: { token: sha256Hex(token), expires: now + 43200 } });
-    return { ok: true, cookie: sessionCookie(token, 43200) };
+    return { ok: true, cookie: await creaSessione(ip, userAgent) };
   }
 
   const attempt = await p.loginAttempt.findUnique({ where: { ip } });
@@ -206,52 +334,136 @@ export async function verifyLogin(ip: string, password: string): Promise<LoginRe
 }
 
 export interface SetupResult extends LoginResult {
-  /** Da mostrare una volta sola: nel database ne resta solo l'hash. */
-  emergenza: string;
+  /** Da mostrare una volta sola: nel database ne restano solo gli hash. */
+  codici: string[];
 }
 
 /**
- * Primo avvio: imposta la password (almeno 12 caratteri), genera il codice di
- * emergenza e crea la sessione.
+ * Primo avvio: imposta la password (almeno 12 caratteri), genera i codici di
+ * emergenza monouso e crea la sessione. È a sua volta un accesso, quindi entra
+ * nello storico come gli altri.
  */
-export async function setupPassword(password: string): Promise<SetupResult> {
+export async function setupPassword(password: string, ip: string, userAgent = ""): Promise<SetupResult> {
   const p = prisma();
   if (password.length < 12) throw new Error("TOO_SHORT");
-  const emergenza = generaCodiceEmergenza();
-  // Un solo INSERT con entrambe le credenziali: fra il controllo "esiste già?"
+  const codici = generaCodiciEmergenza();
+  // Un solo INSERT con la password e i codici: fra il controllo "esiste già?"
   // e la scrittura non c'è più finestra, quindi due setup simultanei non si
   // scontrano sulla chiave e chi arriva secondo riceve ALREADY_SET.
   const created = await p.setting.createMany({
     data: [
       { key: "password", value: credenzialeHash(password) },
-      { key: "password_emergenza", value: credenzialeHash(emergenza) },
+      { key: "password_emergenza", value: codiciHash(codici) },
     ],
     skipDuplicates: true,
   });
   if (created.count === 0) throw new Error("ALREADY_SET");
-  const token = tokenUrlSafe(32);
-  await p.session.create({ data: { token: sha256Hex(token), expires: Date.now() / 1000 + 43200 } });
-  return { ok: true, cookie: sessionCookie(token, 43200), emergenza };
+  await registraAccesso(ip, "password");
+  return { ok: true, cookie: await creaSessione(ip, userAgent), codici };
 }
 
 /**
- * Cambio password dall'app: richiede quella attuale, chiude *tutte* le
+ * Cambio password dall'app: richiede la credenziale attuale, chiude *tutte* le
  * sessioni (compresa quella che sta chiedendo il cambio) e ne emette una nuova
  * per il browser chiamante. Così gli altri dispositivi restano fuori.
  */
-export async function changePassword(current: string, next: string): Promise<string> {
+export interface ChangeResult extends LoginResult {
+  /** Nuovi codici monouso: i precedenti non valgono più, si mostrano una volta. */
+  codici: string[];
+}
+
+export async function changePassword(
+  current: string,
+  next: string,
+  ip = "",
+  userAgent = "",
+): Promise<ChangeResult> {
   const p = prisma();
   const stored = await p.setting.findUnique({ where: { key: "password" } });
   if (!stored) throw new Error("NO_PASSWORD");
   if (next.length < 12) throw new Error("TOO_SHORT");
-  if (!corrisponde(current, stored)) throw new Error("BAD_PASSWORD");
+  // La credenziale attuale può essere la password o uno dei codici monouso:
+  // chi è rientrato con un codice deve poter scegliere una password nuova
+  // senza tornare al terminale. Il codice speso qui si consuma, come al login.
+  if (!corrisponde(current, stored) && !(await consumaCodiceEmergenza(current))) {
+    throw new Error("BAD_PASSWORD");
+  }
 
   await p.setting.update({ where: { key: "password" }, data: { value: credenzialeHash(next) } });
+  // Cambiare password azzera anche i codici superstiti: uno finito in una nota
+  // condivisa non deve sopravvivere al cambio. I nuovi si mostrano una volta.
+  const codici = generaCodiciEmergenza();
+  await scriviCodici(codici);
   await p.session.deleteMany({});
+  return { ok: true, cookie: await creaSessione(ip, userAgent), codici };
+}
 
-  const token = tokenUrlSafe(32);
-  await p.session.create({ data: { token: sha256Hex(token), expires: Date.now() / 1000 + 43200 } });
-  return sessionCookie(token, 43200);
+/** Sostituisce l'intera lista dei codici monouso nel database. */
+async function scriviCodici(codici: string[]): Promise<void> {
+  const value = codiciHash(codici);
+  await prisma().setting.upsert({
+    where: { key: "password_emergenza" },
+    create: { key: "password_emergenza", value },
+    update: { value },
+  });
+}
+
+/** Rigenera i codici dal pannello Sicurezza e li restituisce una volta sola. */
+export async function nuoviCodiciEmergenza(): Promise<string[]> {
+  const codici = generaCodiciEmergenza();
+  await scriviCodici(codici);
+  return codici;
+}
+
+/** Quanti codici di emergenza restano. */
+export async function codiciDisponibili(): Promise<number> {
+  const riga = await prisma().setting.findUnique({ where: { key: "password_emergenza" } });
+  return riga ? (JSON.parse(riga.value) as unknown[]).length : 0;
+}
+
+export interface Sessione {
+  /** Testa dell'hash del token: identifica la sessione senza esporre il cookie. */
+  id: string;
+  ip: string;
+  user_agent: string;
+  created_at: number;
+  last_seen: number;
+  corrente: boolean;
+}
+
+/** Quante sessioni mostra il pannello. */
+const SESSIONI_MOSTRATE = 10;
+
+/** Sessioni ancora valide, dalla più usata di recente, con quella corrente marcata. */
+export async function sessioniAttive(token: string | null): Promise<Sessione[]> {
+  const corrente = token ? sha256Hex(token) : "";
+  const righe = await prisma().session.findMany({
+    where: { expires: { gt: Date.now() / 1000 } },
+    orderBy: { last_seen: "desc" },
+    take: SESSIONI_MOSTRATE,
+  });
+  return righe.map((riga) => ({
+    id: riga.token.slice(0, 12),
+    ip: riga.ip,
+    user_agent: riga.user_agent,
+    created_at: riga.created_at,
+    last_seen: riga.last_seen,
+    corrente: riga.token === corrente,
+  }));
+}
+
+/** Chiude una sessione per id (testa dell'hash) e dice quante ne ha chiuse. */
+export async function revocaSessione(id: string): Promise<number> {
+  if (!/^[a-f0-9]{12}$/.test(id)) throw new Error("SESSIONE_NON_VALIDA");
+  const chiuse = await prisma().session.deleteMany({ where: { token: { startsWith: id } } });
+  return chiuse.count;
+}
+
+/** Chiude tutte le sessioni tranne quella che sta chiedendo. */
+export async function revocaAltreSessioni(token: string | null): Promise<number> {
+  if (!token) return 0;
+  const chiuse = await prisma().session.deleteMany({ where: { token: { not: sha256Hex(token) } } });
+  return chiuse.count;
 }
 
 export async function destroySession(token: string | null): Promise<void> {

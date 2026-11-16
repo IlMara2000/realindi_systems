@@ -283,28 +283,71 @@ describe("CRM", () => {
     expect(denied.status).toBe(400);
   });
 
-  it("il codice di emergenza del setup entra al posto della password", async () => {
+  it("i codici di emergenza del setup entrano al posto della password, una volta sola", async () => {
     const c = makeClient(base);
     const setup = await c.setup();
-    const codice = setup.body.emergenza as string;
-    expect(codice.startsWith("em-")).toBe(true);
-    expect(codice.length).toBeGreaterThan(30);
+    const codici = setup.body.codici as string[];
+    expect(codici).toHaveLength(8);
+    for (const codice of codici) {
+      expect(codice.startsWith("em-")).toBe(true);
+      expect(codice.length).toBeGreaterThan(30);
+    }
 
-    // Entra come la password...
-    expect((await makeClient(base).request("/api/login", { password: codice })).status).toBe(200);
-    // ...e non sostituisce la password normale.
+    // Il primo entra come la password...
+    expect((await makeClient(base).request("/api/login", { password: codici[0] })).status).toBe(200);
+    // ...ma il primo uso lo consuma: lo stesso codice non vale due volte.
+    expect((await makeClient(base).request("/api/login", { password: codici[0] })).status).toBe(400);
+    // Gli altri restano indipendenti, e la password normale non viene toccata.
+    expect((await makeClient(base).request("/api/login", { password: codici[1] })).status).toBe(200);
     expect((await makeClient(base).request("/api/login", { password: "Test-password-123!" })).status).toBe(200);
 
-    // Non è leggibile dall'app: né nelle impostazioni né nello stato.
+    // Due consumati: restano sei hash, e nessun codice è salvato in chiaro.
+    const salvati = await sql("SELECT value FROM settings WHERE key = 'password_emergenza'");
+    const righe = JSON.parse(salvati[0].value) as unknown[];
+    expect(righe).toHaveLength(6);
+    expect(JSON.stringify(righe)).not.toContain(codici[2]);
+
+    // Non sono leggibili dall'app: né nelle impostazioni né nello stato.
     const stato = await c.state();
     expect(stato.settings.password_emergenza).toBeUndefined();
-    expect(JSON.stringify(stato)).not.toContain(codice);
+    expect(JSON.stringify(stato)).not.toContain(codici[2]);
 
-    // E non viaggia nemmeno nel backup.
+    // E non viaggiano nemmeno nel backup.
     const backup = await c.request("/api/backup");
-    const { sql } = await extractBackup(backup.bytes);
-    expect(sql).not.toContain(codice);
-    expect(sql).not.toContain("password_emergenza");
+    const { sql: dump } = await extractBackup(backup.bytes);
+    expect(dump).not.toContain(codici[2]);
+    expect(dump).not.toContain("password_emergenza");
+  });
+
+  it("gli accessi riusciti restano registrati con IP e credenziale", async () => {
+    const c = makeClient(base);
+    const setup = await c.setup();
+    const codici = setup.body.codici as string[];
+
+    // Un accesso col codice, poi un errore che non deve entrare nello storico.
+    expect((await makeClient(base).request("/api/login", { password: codici[0] })).status).toBe(200);
+    expect((await makeClient(base).request("/api/login", { password: "sbagliata" })).status).toBe(400);
+
+    const accessi = (await c.state()).accessi as { ip: string; via: string; nuovo: boolean }[];
+    expect(accessi).toHaveLength(2);
+    expect(accessi[0].via).toBe("codice");
+    expect(accessi[1].via).toBe("password");
+    expect(accessi.every((a) => a.ip === "127.0.0.1")).toBe(true);
+    // Il primo accesso in assoluto non è «nuovo»: non c'è un prima con cui confrontarlo.
+    expect(accessi[1].nuovo).toBe(false);
+
+    // Un IP mai visto prima viene segnalato.
+    await sql("INSERT INTO login_events (at, ip, via) VALUES ($1, '203.0.113.7', 'password')", [
+      Date.now(),
+    ]);
+    const dopo = (await c.state()).accessi as { ip: string; nuovo: boolean }[];
+    expect(dopo[0].ip).toBe("203.0.113.7");
+    expect(dopo[0].nuovo).toBe(true);
+
+    // È storia dell'istanza, non un dato del CRM: non viaggia nel backup.
+    const backup = await c.request("/api/backup");
+    const { sql: dump } = await extractBackup(backup.bytes);
+    expect(dump).not.toContain("203.0.113.7");
   });
 
   it("dieci errori non bloccano la password giusta e azzerano il contatore", async () => {
@@ -390,6 +433,91 @@ describe("CRM", () => {
     // ...e la vecchia password non entra più.
     expect((await makeClient(base).request("/api/login", { password: "Test-password-123!" })).status).toBe(400);
     expect((await makeClient(base).request("/api/login", { password: "Nuova-password-456!" })).status).toBe(200);
+  });
+
+  it("il cambio password accetta un codice di emergenza al posto di quella attuale", async () => {
+    const c = makeClient(base);
+    const setup = await c.setup();
+    const codici = setup.body.codici as string[];
+
+    // Si rientra col codice, come chi non ricorda più la password.
+    const conCodice = makeClient(base);
+    expect((await conCodice.request("/api/login", { password: codici[0] })).status).toBe(200);
+
+    const cambio = await conCodice.request("/api/password", {
+      current: codici[1],
+      password: "Nuova-password-456!",
+    });
+    expect(cambio.status).toBe(200);
+
+    // La password nuova entra, la vecchia no.
+    expect((await makeClient(base).request("/api/login", { password: "Nuova-password-456!" })).status).toBe(200);
+    expect((await makeClient(base).request("/api/login", { password: "Test-password-123!" })).status).toBe(400);
+    // Il cambio rigenera i codici: quelli di prima non valgono più, i nuovi sì.
+    const nuovi = cambio.body.codici as string[];
+    expect(nuovi).toHaveLength(8);
+    expect((await makeClient(base).request("/api/login", { password: codici[1] })).status).toBe(400);
+    expect((await makeClient(base).request("/api/login", { password: codici[2] })).status).toBe(400);
+    expect((await makeClient(base).request("/api/login", { password: nuovi[0] })).status).toBe(200);
+
+    // Una credenziale attuale sbagliata resta rifiutata.
+    const sbagliata = await conCodice.request("/api/password", {
+      current: "non-e-la-mia-password",
+      password: "Altra-password-789!",
+    });
+    expect(sbagliata.status).toBe(400);
+  });
+
+  it("le sessioni attive si vedono e si chiudono una per una", async () => {
+    const a = await fresh();
+    const b = makeClient(base);
+    expect((await b.request("/api/login", { password: "Test-password-123!" })).status).toBe(200);
+
+    const sessioni = (await a.state()).sessioni as { id: string; ip: string; corrente: boolean }[];
+    expect(sessioni).toHaveLength(2);
+    expect(sessioni.filter((s) => s.corrente)).toHaveLength(1);
+    const altra = sessioni.find((s) => !s.corrente)!;
+    expect(altra.ip).toBe("127.0.0.1");
+    expect(altra.id).toMatch(/^[a-f0-9]{12}$/);
+
+    expect((await a.request("/api/sessions/revoke", { id: altra.id })).status).toBe(200);
+    // L'altro browser è fuori, questo resta dentro.
+    expect((await b.request("/api/state")).status).toBe(401);
+    expect((await a.request("/api/state")).status).toBe(200);
+    // Un id che non è una sessione viene rifiutato.
+    expect((await a.request("/api/sessions/revoke", { id: "non-un-id" })).status).toBe(400);
+  });
+
+  it("«disconnetti le altre sessioni» lascia dentro solo questo browser", async () => {
+    const a = await fresh();
+    const b = makeClient(base);
+    expect((await b.request("/api/login", { password: "Test-password-123!" })).status).toBe(200);
+
+    const chiusura = await a.request("/api/sessions/revoke-others", {});
+    expect(chiusura.status).toBe(200);
+    expect(chiusura.body.chiuse).toBe(1);
+    expect((await b.request("/api/state")).status).toBe(401);
+    expect((await a.request("/api/state")).status).toBe(200);
+  });
+
+  it("i codici di emergenza si possono rigenerare dal pannello", async () => {
+    const c = makeClient(base);
+    const setup = await c.setup();
+    const vecchi = setup.body.codici as string[];
+    expect((await c.state()).codici_emergenza).toBe(8);
+
+    // Senza sessione la rigenerazione non è raggiungibile.
+    expect((await makeClient(base).request("/api/emergenza", {}, { public: true })).status).toBe(400);
+
+    const nuovo = await c.request("/api/emergenza", {});
+    expect(nuovo.status).toBe(200);
+    const codici = nuovo.body.codici as string[];
+    expect(codici).toHaveLength(8);
+    expect(codici[0]).not.toBe(vecchi[0]);
+
+    // I vecchi non valgono più, i nuovi sì.
+    expect((await makeClient(base).request("/api/login", { password: vecchi[0] })).status).toBe(400);
+    expect((await makeClient(base).request("/api/login", { password: codici[0] })).status).toBe(200);
   });
 
   it("sicurezza e validazione", async () => {

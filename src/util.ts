@@ -241,6 +241,18 @@ export function hashPassword(password: string, saltHex: string): string {
     .toString("hex");
 }
 
+/** Quanti codici di emergenza monouso nascono a ogni setup o reimpostazione. */
+export const CODICI_EMERGENZA = 8;
+
+/**
+ * Hash di un codice di emergenza. Niente pbkdf2: il codice ha 24 byte casuali,
+ * quindi non si indovina e un derivatore lento servirebbe solo a far pagare
+ * ogni login, che ne confronta fino a otto.
+ */
+export function hashCodice(codice: string, saltHex: string): string {
+  return sha256Hex(saltHex + codice);
+}
+
 /** secrets.token_hex(16) */
 export function tokenHex(bytes: number): string {
   return crypto.randomBytes(bytes).toString("hex");

@@ -77,21 +77,26 @@ describe("reimposta password", () => {
     expect((await sql("SELECT COUNT(*)::int AS n FROM sessions"))[0].n).toBe(0);
   });
 
-  it("la reimpostazione sostituisce anche il codice di emergenza", async () => {
+  it("la reimpostazione sostituisce i codici di emergenza e i nuovi sono monouso", async () => {
     const c = makeClient(base);
     const setup = await c.setup(VECCHIA);
-    const vecchio = setup.body.emergenza as string;
-    expect((await makeClient(base).request("/api/login", { password: vecchio })).status).toBe(200);
+    const vecchi = setup.body.codici as string[];
 
     const esito = await reimpostaPassword(databaseUrl(), NUOVA);
-    expect(esito.codiceEmergenza.startsWith("em-")).toBe(true);
-    expect(esito.codiceEmergenza).not.toBe(vecchio);
+    expect(esito.codiciEmergenza).toHaveLength(8);
+    for (const nuovo of esito.codiciEmergenza) {
+      expect(nuovo.startsWith("em-")).toBe(true);
+      expect(vecchi).not.toContain(nuovo);
+    }
 
-    // Quello vecchio non vale più, quello nuovo entra senza terminale.
-    expect((await makeClient(base).request("/api/login", { password: vecchio })).status).toBe(400);
-    expect((await makeClient(base).request("/api/login", { password: esito.codiceEmergenza })).status).toBe(
-      200,
-    );
+    // I codici vecchi non valgono più; uno nuovo entra, ma una volta sola.
+    expect((await makeClient(base).request("/api/login", { password: vecchi[0] })).status).toBe(400);
+    expect(
+      (await makeClient(base).request("/api/login", { password: esito.codiciEmergenza[0] })).status,
+    ).toBe(200);
+    expect(
+      (await makeClient(base).request("/api/login", { password: esito.codiciEmergenza[0] })).status,
+    ).toBe(400);
   });
 
   it("azzera i tentativi falliti", async () => {
@@ -131,7 +136,10 @@ describe("reimposta password", () => {
     );
 
     expect(stato.passwordPresente).toBe(true);
-    expect(stato.emergenzaPresente).toBe(true);
+    expect(stato.codiciDisponibili).toBe(8);
+    // L'ultimo accesso riuscito arriva dallo stesso IP che il login conta.
+    expect(stato.ultimoAccesso?.ip).toBe("127.0.0.1");
+    expect(stato.ultimoAccesso?.via).toBe("password");
     expect(stato.sessioniAttive).toBe(2);
     expect(stato.bloccati).toHaveLength(1);
     expect(stato.bloccati[0].ip).toBe("10.0.0.9");
@@ -172,9 +180,10 @@ describe("reimposta password", () => {
   it("lo stato di un workspace mai configurato non inventa nulla", async () => {
     expect(await statoAccesso(databaseUrl())).toEqual({
       passwordPresente: false,
-      emergenzaPresente: false,
+      codiciDisponibili: 0,
       sessioniAttive: 0,
       bloccati: [],
+      ultimoAccesso: null,
     });
   });
 

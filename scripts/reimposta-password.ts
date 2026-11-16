@@ -10,16 +10,18 @@
 //   - azzera `login_attempts`, altrimenti dopo dieci errori l'IP resta bloccato
 //     per quindici minuti anche con la password nuova.
 //
-//   npm run password:reimposta              (chiede la nuova password)
+//   npm run password:reimposta              (mostra il database, chiede conferma e la nuova password)
 //   npm run password:reimposta -- --stato   (solo diagnosi, non scrive nulla)
+//   npm run password:reimposta -- --sì      (salta la conferma, per gli script)
 //
 // Usa DATABASE_URL (la stessa connessione dell'applicazione), quindi agisce
 // sull'istanza che si sta davvero usando: in locale o in produzione.
 import "dotenv/config";
 import { randomBytes } from "node:crypto";
+import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
 import { Client } from "pg";
-import { LIMITE_TENTATIVI_LOGIN, hashPassword } from "../src/util.js";
+import { CODICI_EMERGENZA, LIMITE_TENTATIVI_LOGIN, hashCodice, hashPassword } from "../src/util.js";
 
 const MIN_LUNGHEZZA = 12;
 
@@ -27,8 +29,8 @@ export interface EsitoReimpostazione {
   /** true se il workspace aveva già una password (sostituita), false se è stata creata. */
   workspaceProtetto: boolean;
   sessioniChiuse: number;
-  /** Mostrato una volta sola: nel database ne resta solo l'hash. */
-  codiceEmergenza: string;
+  /** Mostrati una volta sola: nel database ne restano solo gli hash, monouso. */
+  codiciEmergenza: string[];
 }
 
 export interface IpBloccato {
@@ -39,10 +41,29 @@ export interface IpBloccato {
 
 export interface StatoAccesso {
   passwordPresente: boolean;
-  /** Un codice di emergenza valido esiste: si può rientrare senza terminale. */
-  emergenzaPresente: boolean;
+  /** Quanti codici di emergenza restano (ognuno vale una volta sola). */
+  codiciDisponibili: number;
   sessioniAttive: number;
   bloccati: IpBloccato[];
+  /** Ultimo accesso riuscito registrato dall'app (null se lo storico è vuoto). */
+  ultimoAccesso: { at: number; ip: string; via: string } | null;
+}
+
+/** Host e nome del database, senza credenziali: serve a dire dove si scrive. */
+function istanza(connectionString: string): string {
+  const parsed = new URL(connectionString);
+  return `${parsed.host}${parsed.pathname}`;
+}
+
+/** Data e ora leggibili di un istante in millisecondi (Europe/Rome). */
+function quando(ms: number): string {
+  return new Date(ms).toLocaleString("it-IT", {
+    timeZone: "Europe/Rome",
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 /**
@@ -56,24 +77,41 @@ export async function statoAccesso(connectionString: string): Promise<StatoAcces
   try {
     const now = Date.now() / 1000;
     const password = await client.query("SELECT 1 FROM settings WHERE key = 'password'");
-    const emergenza = await client.query("SELECT 1 FROM settings WHERE key = 'password_emergenza'");
+    const emergenza = await client.query<{ value: string }>(
+      "SELECT value FROM settings WHERE key = 'password_emergenza'",
+    );
+    const codiciDisponibili = emergenza.rows[0]
+      ? (JSON.parse(emergenza.rows[0].value) as unknown[]).length
+      : 0;
     const sessioni = await client.query<{ n: number }>(
       "SELECT COUNT(*)::int AS n FROM sessions WHERE expires > $1",
       [now],
     );
+    // La tabella degli accessi arriva con una migrazione: su un database più
+    // vecchio la diagnosi prosegue senza, invece di fermarsi.
+    let ultimoAccesso: StatoAccesso["ultimoAccesso"] = null;
+    try {
+      const ultimo = await client.query<{ at: number; ip: string; via: string }>(
+        "SELECT at, ip, via FROM login_events ORDER BY id DESC LIMIT 1",
+      );
+      ultimoAccesso = ultimo.rows[0] ?? null;
+    } catch {
+      // tabella assente
+    }
     const bloccati = await client.query<{ ip: string; count: number; reset: number }>(
       "SELECT ip, count, reset FROM login_attempts WHERE count >= $1 AND reset > $2 ORDER BY reset ASC",
       [LIMITE_TENTATIVI_LOGIN, now],
     );
     return {
       passwordPresente: (password.rowCount ?? 0) > 0,
-      emergenzaPresente: (emergenza.rowCount ?? 0) > 0,
+      codiciDisponibili,
       sessioniAttive: sessioni.rows[0].n,
       bloccati: bloccati.rows.map((row) => ({
         ip: row.ip,
         tentativi: row.count,
         secondiResidui: Math.ceil(row.reset - now),
       })),
+      ultimoAccesso,
     };
   } finally {
     await client.end();
@@ -108,11 +146,18 @@ export async function reimpostaPassword(
 
     const salt = randomBytes(16).toString("hex");
     const value = JSON.stringify([salt, hashPassword(nuovaPassword, salt)]);
-    // Codice di emergenza nuovo a ogni reimpostazione: quello vecchio smette di
-    // valere, così un codice dimenticato in giro non resta una porta aperta.
-    const emergenza = `em-${randomBytes(24).toString("base64url")}`;
-    const emergenzaSalt = randomBytes(16).toString("hex");
-    const emergenzaValue = JSON.stringify([emergenzaSalt, hashPassword(emergenza, emergenzaSalt)]);
+    // Codici nuovi a ogni reimpostazione: quelli vecchi smettono di valere, così
+    // un codice copiato in una nota condivisa non resta una porta aperta.
+    const codici = Array.from(
+      { length: CODICI_EMERGENZA },
+      () => `em-${randomBytes(24).toString("base64url")}`,
+    );
+    const codiciValue = JSON.stringify(
+      codici.map((codice) => {
+        const salt = randomBytes(16).toString("hex");
+        return [salt, hashCodice(codice, salt)];
+      }),
+    );
     const sessioni = await client.query("DELETE FROM sessions");
 
     await client.query("BEGIN");
@@ -122,7 +167,7 @@ export async function reimpostaPassword(
     }
     await client.query(
       "INSERT INTO settings (key, value) VALUES ('password_emergenza', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
-      [emergenzaValue],
+      [codiciValue],
     );
     // Sblocca l'IP: i tentativi falliti non devono impedire l'accesso con la
     // password appena impostata.
@@ -138,18 +183,21 @@ export async function reimpostaPassword(
     if (hashPassword(nuovaPassword, lettoSalt) !== lettoHash) {
       throw new Error("Verifica fallita: la password salvata non corrisponde a quella digitata.");
     }
-    const salvataEmergenza = await client.query<{ value: string }>(
+    const salvatiCodici = await client.query<{ value: string }>(
       "SELECT value FROM settings WHERE key = 'password_emergenza'",
     );
-    const [lettoSaltEm, lettoHashEm] = JSON.parse(salvataEmergenza.rows[0].value) as [string, string];
-    if (hashPassword(emergenza, lettoSaltEm) !== lettoHashEm) {
-      throw new Error("Verifica fallita: il codice di emergenza salvato non corrisponde.");
+    const righe = JSON.parse(salvatiCodici.rows[0].value) as [string, string][];
+    if (
+      righe.length !== codici.length ||
+      !codici.every((codice, i) => hashCodice(codice, righe[i][0]) === righe[i][1])
+    ) {
+      throw new Error("Verifica fallita: i codici di emergenza salvati non corrispondono.");
     }
 
     return {
       workspaceProtetto: (esistente.rowCount ?? 0) > 0,
       sessioniChiuse: sessioni.rowCount ?? 0,
-      codiceEmergenza: emergenza,
+      codiciEmergenza: codici,
     };
   } finally {
     await client.end();
@@ -188,6 +236,17 @@ function leggiNascosta(prompt: string): Promise<string> {
       }
     };
     process.stdin.on("data", onData);
+  });
+}
+
+/** Domanda sì/no sul terminale (visibile: non è un segreto). */
+function conferma(domanda: string): Promise<boolean> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(domanda, (risposta) => {
+      rl.close();
+      resolve(/^(s|si|sì|y|yes)$/i.test(risposta.trim()));
+    });
   });
 }
 
@@ -230,6 +289,9 @@ async function main(): Promise<void> {
   if (!connectionString) {
     throw new Error("DATABASE_URL non configurato: compila il file .env.");
   }
+  // Dove si scrive: un .env che punta alla produzione credendo di essere in
+  // locale non deve poter reimpostare il workspace vero senza accorgersene.
+  console.log(`Database: ${istanza(connectionString)}`);
 
   if (process.argv.includes("--stato")) {
     const stato = await statoAccesso(connectionString);
@@ -239,11 +301,18 @@ async function main(): Promise<void> {
         : "Password del workspace: assente (il gestionale chiede di crearne una al primo accesso).",
     );
     console.log(
-      stato.emergenzaPresente
-        ? "Codice di emergenza: impostato (permette di rientrare senza terminale)."
-        : "Codice di emergenza: assente (una reimpostazione ne genera uno nuovo).",
+      stato.codiciDisponibili
+        ? `Codici di emergenza: ${stato.codiciDisponibili} disponibili (ognuno vale una volta sola).`
+        : "Codici di emergenza: nessuno (una reimpostazione ne genera 8 nuovi).",
     );
     console.log(`Sessioni attive: ${stato.sessioniAttive}.`);
+    console.log(
+      stato.ultimoAccesso
+        ? `Ultimo accesso: ${quando(stato.ultimoAccesso.at)} da ${stato.ultimoAccesso.ip} (${
+            stato.ultimoAccesso.via === "codice" ? "codice di emergenza" : "password"
+          }).`
+        : "Ultimo accesso: nessuno registrato.",
+    );
     if (!stato.bloccati.length) {
       console.log("IP bloccati: nessuno.");
       if (stato.passwordPresente) {
@@ -261,6 +330,17 @@ async function main(): Promise<void> {
     return;
   }
 
+  // Conferma esplicita prima di scrivere; in automazione (niente terminale) la
+  // conferma è implicita, e --sì la salta anche da terminale.
+  const confermato =
+    process.argv.includes("--sì") || !process.stdin.isTTY
+      ? true
+      : await conferma("Sostituire la password su questo database? [s/n] ");
+  if (!confermato) {
+    console.log("Nessuna modifica fatta.");
+    return;
+  }
+
   const nuova = await chiediNuovaPassword();
   const esito = await reimpostaPassword(connectionString, nuova);
 
@@ -273,10 +353,10 @@ async function main(): Promise<void> {
   console.log("Blocco dei tentativi azzerato. Accedi da /app con la nuova password.");
   console.log("La password non viene mostrata: salvala ora nel gestore password.");
   console.log("");
-  console.log("Codice di emergenza (nuovo, mostrato solo ora):");
-  console.log(`  ${esito.codiceEmergenza}`);
+  console.log(`Codici di emergenza (${esito.codiciEmergenza.length} nuovi, mostrati solo ora):`);
+  for (const codice of esito.codiciEmergenza) console.log(`  ${codice}`);
   console.log(
-    "Salvalo insieme alla password: entra da /app senza terminale. Quello precedente non vale più.",
+    "Ognuno vale una volta sola e il primo uso lo consuma: entra da /app senza terminale. I codici precedenti non valgono più.",
   );
 }
 

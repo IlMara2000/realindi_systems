@@ -348,8 +348,9 @@ async function saved(message) {
 const RECUPERO_PASSWORD =
   '<details class="hint auth-recovery">' +
   "<summary>Password dimenticata?</summary>" +
-  "<p>Se hai salvato il codice di emergenza mostrato al setup (o all'ultima " +
-  "reimpostazione), incollalo nel campo password: vale come la password. Altrimenti " +
+  "<p>Se hai salvato uno dei codici di emergenza mostrati al setup (o all'ultima " +
+  "reimpostazione), incollalo nel campo password: entra come la password, ma una " +
+  "volta sola. Altrimenti " +
   "va reimpostata dal computer dove gira il gestionale, con doppio clic su " +
   "<strong>Reimposta password.command</strong> (oppure con " +
   "<code>npm run password:reimposta</code>): chiede la nuova password, chiude le " +
@@ -358,23 +359,24 @@ const RECUPERO_PASSWORD =
   "</details>";
 
 /**
- * Codice di emergenza appena generato: esiste solo in questa risposta, quindi si
- * mostra una volta con un pulsante per copiarlo e uno per entrare. Nel database
- * resta solo l'hash, quindi se si perde si rigenera con il comando di reset.
+ * Codici di emergenza appena generati: esistono solo in questa risposta, quindi
+ * si mostrano una volta con un pulsante per copiarli e uno per entrare. Nel
+ * database ne restano gli hash e ogni uso ne consuma uno, quindi se si perdono
+ * si rigenerano con il comando di reset.
  */
-function mostraEmergenza(codice) {
+function mostraEmergenza(codici) {
   $("#auth-form").closest(".auth-form").innerHTML =
     '<div class="eyebrow">Workspace creato</div>' +
-    "<h1>Salva il codice di emergenza.</h1>" +
-    '<p class="subtitle">Entra al posto della password se la dimentichi, senza terminale né accesso al database. Non viene mostrato di nuovo.</p>' +
-    `<p class="link-box">${esc(codice)}</p>` +
-    '<div class="actions"><button type="button" class="secondary" id="emergenza-copia">Copia</button>' +
+    "<h1>Salva i codici di emergenza.</h1>" +
+    `<p class="subtitle">Sono ${codici.length} e ognuno entra al posto della password una volta sola, senza terminale né accesso al database. Non vengono mostrati di nuovo.</p>` +
+    `<ol class="codice-lista">${codici.map((c) => `<li><code>${esc(c)}</code></li>`).join("")}</ol>` +
+    '<div class="actions"><button type="button" class="secondary" id="emergenza-copia">Copia tutti</button>' +
     '<button type="button" class="primary" id="emergenza-entra">L’ho salvato, entra</button></div>' +
-    '<p class="hint">Conservalo nel gestore password accanto alla password. Se lo perdi, «Reimposta password.command» ne genera un altro.</p>';
+    '<p class="hint">Conservali nel gestore password accanto alla password. Se li perdi, «Reimposta password.command» ne genera altri.</p>';
   $("#emergenza-copia").onclick = async () => {
     try {
-      await navigator.clipboard.writeText(codice);
-      $("#emergenza-copia").textContent = "Copiato";
+      await navigator.clipboard.writeText(codici.join("\n"));
+      $("#emergenza-copia").textContent = "Copiati";
     } catch {
       // Senza permesso per gli appunti resta il testo a schermo, da copiare a mano.
       $("#emergenza-copia").textContent = "Copia a mano";
@@ -397,9 +399,9 @@ function auth(setup) {
       if (setup && d.password !== d.confirm)
         throw new Error("Le password non coincidono.");
       const res = await api(setup ? "/api/setup" : "/api/login", d);
-      // Il codice di emergenza arriva solo in questa risposta: si mostra subito,
-      // perché dopo non è più recuperabile.
-      if (setup && res?.emergenza) return mostraEmergenza(res.emergenza);
+      // I codici di emergenza arrivano solo in questa risposta: si mostrano
+      // subito, perché dopo non sono più recuperabili.
+      if (setup && res?.codici?.length) return mostraEmergenza(res.codici);
       await refresh();
     } catch (e) {
       $(".error", f).textContent = e.message;
@@ -1026,12 +1028,49 @@ function planner() {
  * configura il workspace parlando con Buffy, e un pannello lì non sarebbe
  * raggiungibile.
  */
+/**
+ * Codici di emergenza appena generati (setup, cambio password, rigenerazione):
+ * esistono solo in questa risposta, quindi si mostrano una volta con un pulsante
+ * per copiarli. Nel database ne restano gli hash.
+ */
+function mostraCodici(codici, sottotitolo = "Ognuno entra al posto della password una volta sola. Non vengono mostrati di nuovo.") {
+  showModal(
+    "Codici di emergenza",
+    `<p class="subtitle">${esc(sottotitolo)}</p><ol class="codice-lista">${codici
+      .map((c) => `<li><code>${esc(c)}</code></li>`)
+      .join("")}</ol><p class="hint">Conservali nel gestore password accanto alla password. I codici precedenti non valgono più.</p><div class="actions"><button type="button" class="secondary" data-action="copia-codici">Copia tutti</button><button type="button" class="primary" data-action="close">Fatto</button></div>`,
+  );
+}
+
+/** Etichetta breve del browser di una sessione: il resto dell'user agent non dice niente. */
+function browserLabel(ua) {
+  const t = String(ua || "");
+  if (/Edg\//.test(t)) return "Edge";
+  if (/OPR\//.test(t)) return "Opera";
+  if (/Chrome\//.test(t)) return "Chrome";
+  if (/Firefox\//.test(t)) return "Firefox";
+  if (/Safari\//.test(t)) return "Safari";
+  return t ? "Browser" : "Browser sconosciuto";
+}
+
+/** Avviso quando l'ultimo accesso arriva da un IP mai visto prima. */
+function avvisoAccesso() {
+  const ultimo = (state.accessi || [])[0];
+  if (!ultimo || !ultimo.nuovo) return "";
+  return `<div class="callout"><strong>Ultimo accesso da un indirizzo nuovo</strong><br>${esc(
+    ultimo.ip,
+  )} · ${timeLabel(ultimo.at)}. Se non eri tu, cambia la password qui sotto.</div>`;
+}
+
 function securityView() {
+  const accessi = state.accessi || [];
+  const sessioni = state.sessioni || [];
+  const codici = Number(state.codici_emergenza || 0);
   return (
     title("Accesso al workspace.", "La password che protegge clienti, documenti e fatture.") +
     panel(
       "Cambia password",
-      `<div class="panel-body"><form id="password-form" class="form-grid">${field(
+      `<div class="panel-body">${avvisoAccesso()}<form id="password-form" class="form-grid">${field(
         "Password attuale",
         "current",
         "password",
@@ -1049,7 +1088,60 @@ function securityView() {
         "password",
         "",
         'required minlength="12" maxlength="256" autocomplete="new-password"',
-      )}<div class="error" role="alert"></div><div class="form-actions"><button class="primary" type="submit">Cambia password</button></div></form><p class="hint">Almeno 12 caratteri. Cambiandola si chiudono le sessioni aperte sugli altri dispositivi; questa resta attiva. Se non ricordi quella attuale, usa «Reimposta password.command» dal computer del gestionale.</p></div>`,
+      )}<div class="error" role="alert"></div><div class="form-actions"><button class="primary" type="submit">Cambia password</button></div></form><p class="hint">Almeno 12 caratteri. Cambiandola si chiudono le sessioni aperte sugli altri dispositivi; questa resta attiva. Se non ricordi quella attuale puoi incollare uno dei codici di emergenza: in quel caso il codice viene consumato. Senza password e senza codici, usa «Reimposta password.command» dal computer del gestionale.</p></div>`,
+    ) +
+    panel(
+      "Codici di emergenza",
+      `<div class="panel-body"><p class="subtitle">${
+        codici
+          ? `${codici} codici monouso ancora validi: ognuno entra una volta sola, senza terminale.`
+          : "Nessun codice valido: se dimentichi la password devi reimpostarla dal computer del gestionale."
+      }</p><div class="actions">${btn(
+        "Genera nuovi codici",
+        "nuovi-codici",
+        "",
+        codici ? "secondary" : "primary",
+      )}</div><p class="hint">Rigenerarli invalida quelli attuali; i nuovi compaiono una volta sola, subito dopo.</p></div>`,
+    ) +
+    panel(
+      "Sessioni attive",
+      `<div class="panel-body">${
+        sessioni.length
+          ? sessioni
+              .map(
+                (s) =>
+                  `<div class="list-row"><div class="list-info"><strong>${esc(
+                    s.ip || "IP sconosciuto",
+                  )} · ${browserLabel(s.user_agent)}</strong><small>aperta ${timeLabel(
+                    (s.created_at || s.last_seen) * 1000,
+                  )} · ultimo uso ${timeLabel(s.last_seen * 1000)}</small></div>${
+                    s.corrente
+                      ? '<span class="pill">questa sessione</span>'
+                      : btn("Disconnetti", "revoca-sessione", s.id)
+                  }</div>`,
+              )
+              .join("")
+          : '<p class="subtitle">Nessuna sessione attiva.</p>'
+      }${sessioni.length > 1 ? `<div class="section-gap">${btn("Disconnetti le altre sessioni", "revoca-altre")}</div>` : ""}<p class="hint">Una sessione dura dodici ore. Chiuderla qui la rende inutile subito, anche se il cookie è già sul dispositivo.</p></div>`,
+    ) +
+    panel(
+      "Accessi recenti",
+      `<div class="panel-body">${
+        accessi.length
+          ? accessi
+              .map(
+                (a) =>
+                  `<div class="list-row"><div class="list-info"><strong>${timeLabel(
+                    a.at,
+                  )}</strong><small>${esc(a.ip)} · ${
+                    a.via === "codice" ? "codice di emergenza" : "password"
+                  }</small></div>${
+                    a.nuovo ? '<span class="pill">nuovo indirizzo</span>' : ""
+                  }</div>`,
+              )
+              .join("")
+          : '<p class="subtitle">Nessun accesso registrato.</p>'
+      }<p class="hint">Gli ultimi accessi riusciti, dal più recente: data, IP e credenziale usata. Gli errori non vengono registrati.</p></div>`,
     )
   );
 }
@@ -1327,9 +1419,16 @@ function bindView() {
       b.disabled = true;
       errore.textContent = "";
       try {
-        await api("/api/password", { current: d.current, password: d.password });
+        const res = await api("/api/password", { current: d.current, password: d.password });
         f.reset();
+        await refresh();
         toast("Password aggiornata: le altre sessioni sono state chiuse.");
+        if (res?.codici?.length) {
+          mostraCodici(
+            res.codici,
+            "Password aggiornata. Questi sono i nuovi codici di emergenza: quelli di prima non valgono più.",
+          );
+        }
       } catch (err) {
         errore.textContent = err.message;
       } finally {
@@ -1696,6 +1795,36 @@ document.addEventListener("click", async (e) => {
       calcVersion++;
       $("#modal").oninput = null;
       return $("#modal").close();
+    }
+    if (a === "nuovi-codici") {
+      const res = await api("/api/emergenza", {});
+      await refresh();
+      if (res?.codici?.length)
+        mostraCodici(res.codici, "I codici di prima non valgono più. Eccoli, una volta sola.");
+      return;
+    }
+    if (a === "copia-codici") {
+      const codici = $$("#modal .codice-lista code").map((c) => c.textContent.trim());
+      try {
+        await navigator.clipboard.writeText(codici.join("\n"));
+        b.textContent = "Copiati";
+      } catch {
+        // Senza permesso per gli appunti resta l'elenco a schermo, da copiare a mano.
+        b.textContent = "Copia a mano";
+      }
+      return;
+    }
+    if (a === "revoca-sessione") {
+      await api("/api/sessions/revoke", { id });
+      await refresh();
+      toast("Sessione chiusa.");
+      return;
+    }
+    if (a === "revoca-altre") {
+      const res = await api("/api/sessions/revoke-others", {});
+      await refresh();
+      toast(res?.chiuse ? `Sessioni chiuse: ${res.chiuse}.` : "Nessun'altra sessione aperta.");
+      return;
     }
     if (a === "logout") {
       await api("/api/logout", {});
