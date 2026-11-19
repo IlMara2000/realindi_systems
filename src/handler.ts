@@ -4,6 +4,7 @@
 import { readFileSync } from "node:fs";
 import { CATALOG } from "./estimator.js";
 import * as fiscal from "./fiscal.js";
+import * as sdi from "./sdi.js";
 import { buildBackup, BackupTooLarge } from "./backup.js";
 import { available, createAppointment } from "./booking.js";
 import {
@@ -1900,6 +1901,53 @@ async function handlePostFiscal(
       });
     });
     return send({ id: inv.id, filename });
+  }
+
+  if (path === "/api/invoices/sdi-sent") {
+    const id = Number(d.id);
+    const inv = Number.isInteger(id) ? await p.invoice.findUnique({ where: { id } }) : null;
+    if (!inv) throw new Invalid("Elemento non trovato.");
+    if (!inv.xml) throw new Invalid("Genera prima l'XML della fattura.");
+    const channel = String(d.channel ?? "");
+    if (!(sdi.SDI_CHANNELS as readonly string[]).includes(channel)) throw new Invalid("Canale di invio non valido.");
+    if (inv.sdi_status !== "none") throw new Invalid("L'invio è già stato registrato.");
+    await p.invoice.update({
+      where: { id: inv.id },
+      data: { sdi_status: "sent", sdi_channel: channel, sdi_sent_at: isoNow() },
+    });
+    return send({ ok: true });
+  }
+
+  if (path === "/api/invoices/sdi-notification") {
+    const name = typeof d.filename === "string" ? d.filename : "";
+    const content = typeof d.content === "string" ? d.content : "";
+    if (!content || content.length > 1_000_000) throw new Invalid("Notifica SdI non valida.");
+    let note: sdi.SdiNotification;
+    try {
+      note = sdi.parseNotification(content);
+    } catch (err) {
+      if (err instanceof sdi.SdiParseError) throw new Invalid(err.message);
+      throw err;
+    }
+    const inv = await p.invoice.findFirst({ where: { xml_filename: note.invoice_filename } });
+    if (!inv) throw new Invalid(`Nessuna fattura corrisponde al file ${note.invoice_filename}.`);
+    const log = JSON.parse(inv.sdi_log) as Array<Record<string, unknown>>;
+    if (log.some((e) => e.type === note.type && e.sdi_id === note.sdi_id && e.received_at === note.received_at)) {
+      return send({ id: inv.id, status: inv.sdi_status, duplicate: true });
+    }
+    log.push({ ...note, file: name.slice(0, 200), imported_at: isoNow() });
+    const status = sdi.nextStatus(inv.sdi_status as sdi.SdiStatus, note.type);
+    await p.invoice.update({
+      where: { id: inv.id },
+      data: {
+        sdi_status: status,
+        sdi_id: note.sdi_id || inv.sdi_id,
+        sdi_sent_at: inv.sdi_sent_at ?? isoNow(),
+        sdi_channel: inv.sdi_channel ?? "intermediario",
+        sdi_log: JSON.stringify(log),
+      },
+    });
+    return send({ id: inv.id, status, type: note.type, errors: note.errors });
   }
 
   if (path === "/api/invoices/status") {
