@@ -1898,3 +1898,38 @@ html::-webkit-scrollbar-corner {
   border-radius: 999px;
   box-shadow: var(--raised);
 }
+
+/* Link in basso della bio (Contattami, Sito) */
+.bio-footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 1.6rem;
+}
+
+.bio-footer-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.6rem 1.1rem;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.88rem;
+  font-weight: 650;
+  text-decoration: none;
+  box-shadow: var(--raised-sm);
+  transition: box-shadow 0.18s ease, transform 0.18s ease, color 0.18s ease;
+}
+
+.bio-footer-links a:hover {
+  color: var(--accent);
+  box-shadow: var(--raised);
+  transform: translateY(-1px);
+}
+
+.bio-footer-links a:active {
+  transform: translateY(0);
+  box-shadow: var(--inset-sm);
+}
