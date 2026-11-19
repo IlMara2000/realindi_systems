@@ -106,6 +106,11 @@ model Invoice {
   created_at   String   @default(dbgenerated("to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD HH24:MI:SS')"))
   xml          Bytes?
   xml_filename String?
+  sdi_status   String   @default("none")
+  sdi_channel  String?
+  sdi_sent_at  String?
+  sdi_id       String?
+  sdi_log      String   @default("[]")
   quote        Quote?   @relation(fields: [quote_id], references: [id])
   project      Project  @relation(fields: [project_id], references: [id])
   @@map("invoices")
