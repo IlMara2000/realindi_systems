@@ -1674,11 +1674,40 @@ function viewQuote(id) {
     `<div class="actions">${q.estimate ? btn("Ipotesi iniziali", "estimate-source", id) : ""}${btn("Stampa / Salva PDF", "print-quote", id)}${q.status === "draft" ? btn("Segna consegnato", "quote-sent", id) : ""}${["draft", "sent"].includes(q.status) ? btn("Registra accettazione", "quote-accepted", id, "primary small") + btn("Rifiutato", "quote-rejected", id) : ""}</div>${documentHtml("quote", q)}`,
   );
 }
+const SDI_LABELS = {
+  none: "Da inviare al SdI",
+  sent: "Inviata al SdI, in attesa di esito",
+  delivered: "Consegnata al destinatario",
+  not_delivered: "Mancata consegna: la fattura è valida, il cliente la trova nell’area riservata",
+  rejected: "Scartata dal SdI: la fattura è considerata non emessa",
+  attested: "Trasmessa, destinatario non raggiungibile",
+  expired: "Decorrenza termini",
+};
+const SDI_CHANNEL_LABELS = { portale: "portale Fatture e Corrispettivi", pec: "PEC", intermediario: "intermediario" };
+function sdiPanel(i) {
+  if (!i.xml_generated) return "";
+  const status = i.sdi_status || "none";
+  let log = [];
+  try {
+    log = JSON.parse(i.sdi_log || "[]");
+  } catch {}
+  const errors = log
+    .filter((e) => e.type === "NS" || e.type === "MC")
+    .flatMap((e) => e.errors || [])
+    .map((e) => `<li>${esc(e.code ? e.code + " · " : "")}${esc(e.description)}</li>`)
+    .join("");
+  const send =
+    status === "none"
+      ? `<p class="muted">Invia il file <strong>${esc(i.xml_filename)}</strong> al SdI con un canale ufficiale: carica l’XML sul <a href="https://ivaservizi.agenziaentrate.gov.it/portale/" target="_blank" rel="noopener noreferrer">portale Fatture e Corrispettivi</a> (gratuito, accesso con SPID/CIE/CNS) oppure allegalo a una PEC verso <strong>sdi01@pec.fatturapa.it</strong>. Poi registra qui l’invio.</p><div class="actions">${btn("Inviata dal portale AdE", "sdi-sent-portale", i.id, "small")}${btn("Inviata via PEC", "sdi-sent-pec", i.id, "small")}${btn("Inviata con intermediario", "sdi-sent-intermediario", i.id, "small")}</div>`
+      : `<p class="muted">Canale: ${esc(SDI_CHANNEL_LABELS[i.sdi_channel] || i.sdi_channel || "—")}${i.sdi_sent_at ? " · " + esc(day(i.sdi_sent_at)) : ""}${i.sdi_id ? " · ID SdI " + esc(i.sdi_id) : ""}</p>`;
+  const tail = `<label class="button small">Importa notifica SdI (XML)<input type="file" accept=".xml,text/xml,application/xml" data-sdi-file hidden></label>`;
+  return `<section class="sdi-panel"><div class="eyebrow">Sistema di Interscambio</div><p><strong>${esc(SDI_LABELS[status] || status)}</strong></p>${errors ? `<ul>${errors}</ul>` : ""}${send}${status === "none" ? "" : `<div class="actions">${tail}</div>`}</section>`;
+}
 function viewInvoice(id) {
   const i = state.invoices.find((x) => x.id === Number(id));
   showModal(
     "Fattura " + (i.number || "in bozza"),
-    `<div class="actions">${btn("Stampa / Salva PDF", "print-invoice", id)}${i.xml_generated ? `<a class="button small" href="/api/invoices/${i.id}/xml">Scarica XML</a>` : ""}${i.status === "draft" ? btn("Verifica fiscale e genera XML", "invoice-issued", id, "primary small") : ""}${i.status === "issued" ? btn("Segna come pagata", "invoice-paid", id, "primary small") : ""}</div>${documentHtml("invoice", i)}`,
+    `<div class="actions">${btn("Stampa / Salva PDF", "print-invoice", id)}${i.xml_generated ? `<a class="button small" href="/api/invoices/${i.id}/xml">Scarica XML</a>` : ""}${i.status === "draft" ? btn("Verifica fiscale e genera XML", "invoice-issued", id, "primary small") : ""}${i.status === "issued" ? btn("Segna come pagata", "invoice-paid", id, "primary small") : ""}</div>${sdiPanel(i)}${documentHtml("invoice", i)}`,
   );
 }
 function confirmAction(title, text, action) {
@@ -2129,6 +2158,17 @@ document.addEventListener("click", async (e) => {
       window.dispatchEvent(new CustomEvent("buffy:open", { detail: { prompt: "Aiutami a completare i dati fiscali dell'azienda." } }));
       return;
     }
+    if (a.startsWith("sdi-sent-")) {
+      const channel = a.slice(9);
+      return confirmAction(
+        "Registra invio al SdI",
+        "Confermi di aver già trasmesso il file XML al Sistema di Interscambio con questo canale? Il gestionale non invia nulla da solo.",
+        async () => {
+          await api("/api/invoices/sdi-sent", { id: Number(id), channel });
+          await saved("Invio registrato.");
+        },
+      );
+    }
     if (a === "invoice-paid")
       return confirmAction(
         "Registra pagamento",
@@ -2140,6 +2180,20 @@ document.addEventListener("click", async (e) => {
       );
   } catch (e) {
     report(e);
+  }
+});
+document.addEventListener("change", async (e) => {
+  const input = e.target.closest && e.target.closest("[data-sdi-file]");
+  if (!input || !input.files || !input.files[0]) return;
+  try {
+    const file = input.files[0];
+    if (file.size > 1000000) throw new Error("File troppo grande per essere una notifica SdI.");
+    const result = await api("/api/invoices/sdi-notification", { filename: file.name, content: await file.text() });
+    await saved(result.duplicate ? "Notifica già importata." : "Notifica SdI importata.");
+  } catch (err) {
+    report(err);
+  } finally {
+    input.value = "";
   }
 });
 window.addEventListener("hashchange", () => {
