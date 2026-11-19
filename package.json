@@ -13,6 +13,7 @@
     "db:check": "tsx scripts/check-migrations.ts",
     "db:pulisci-test": "tsx scripts/pulisci-db-test.ts",
     "diagnose:ai": "tsx scripts/diagnose-ai.ts",
+    "diagnose:db": "tsx scripts/diagnose-db.ts",
     "test:locale": "bash scripts/test-locale.sh",
     "db:migrate-data": "tsx scripts/migrate-sqlite.ts",
     "password:reimposta": "tsx scripts/reimposta-password.ts",
