@@ -26,15 +26,15 @@ Variabili d’ambiente (opzionali; senza di esse le integrazioni restano disatti
 | Variabile | Uso |
 |---|---|
 | `DATABASE_URL` | Connessione PostgreSQL (Prisma) |
-| `DATABASE_URL_TEST` | Connessione **modello** per la suite di test: i test girano su un database creato per ogni esecuzione accanto a questo (vedi sotto) |
+| `DATABASE_URL_TEST` | Database della suite di test: i test girano qui e le tabelle vengono svuotate a ogni run (vedi sotto) |
 | `INTEGRATIONS_KEY` | Chiave per cifrare (AES-256-GCM) le credenziali Google/Apple, dei canali WhatsApp/Instagram/SMS e la chiave AI: generane una lunga e casuale e non cambiarla mai dopo il primo collegamento |
 | `GOOGLE_CLIENT_ID` | Client OAuth di Google Cloud |
 | `GOOGLE_CLIENT_SECRET` | Segreto OAuth di Google Cloud |
 | `APP_ORIGIN` | Origine pubblica usata per il redirect OAuth (es. `https://realindi-systems.vercel.app`), senza percorso. Su Vercel l'host cambia fra produzione, dominio personalizzato e preview: senza questa variabile il `redirect_uri` seguirebbe il dominio del deployment e Google risponderebbe `redirect_uri_mismatch` |
 
-**Suite di test (`npm test`).** `DATABASE_URL_TEST` non è il database su cui girano i test: è solo il modello di connessione, da cui la suite ricava host, credenziali e `sslmode`, mentre il nome del database serve solo come punto di partenza. Ogni esecuzione crea accanto a questo un database proprio — `realindi_test_run_<timestamp>_<nonce>` — vi applica le migrazioni di `prisma/migrations` e lo elimina alla fine; quelli rimasti da una run interrotta vengono cancellati al successivo avvio dopo un'ora. Due `npm test` in parallelo non si toccano e il database indicato in `DATABASE_URL_TEST` non viene mai modificato.
+**Suite di test (`npm test`).** La suite gira sul database indicato da `DATABASE_URL_TEST`: all'avvio applica le migrazioni di `prisma/migrations` e svuota le tabelle applicative, quindi una run non eredita niente dalla precedente. Il database non viene creato né distrutto: deve esistere già (può restare vuoto, senza tabelle: basta `createdb realindi_test`) e il suo contenuto viene azzerato a ogni run. Due `npm test` in parallelo sullo stesso database si troncherebbero le tabelle a vicenda: vanno eseguite una alla volta. La variabile può arrivare anche dall'ambiente invece che dal file `.env` — è il caso della CI — e in quel caso ha la precedenza sul file.
 
-Servono due cose: che quel database **esista** (può restare vuoto, nessuna tabella: basta `createdb realindi_test`) e che il ruolo Postgres abbia il privilegio **`CREATEDB`**, perché la suite crea e distrugge database. Con un ruolo senza quel privilegio il primo test si ferma con `permission denied to create database`. La variabile può arrivare anche dall'ambiente invece che dal file `.env` — è il caso della CI — e in quel caso ha la precedenza sul file.
+**Nessun database lasciato dietro.** La suite non crea database: se trova `realindi_test_run_*` rimasti dalle vecchie run li elimina da sola, quelli più vecchi di un'ora all'avvio e quelli nati durante l'esecuzione alla fine (anche a test falliti); sotto l'ora non li tocca, perché potrebbe esserci una run in corso. Senza questa pulizia si accumulavano fino a far rifiutare ogni connessione all'account Prisma con `planLimitReached`. `npm run db:pulisci-test` fa la stessa pulizia a mano, elencando prima ciò che elimina. Il privilegio Postgres **`CREATEDB`** serve solo a `npm run db:check`, che crea database temporanei per confrontare schema e migrazioni.
 
 **Google (Calendar + Gmail):** crea un progetto su console.cloud.google.com, attiva le API *Google Calendar* e *Gmail*, crea una credenziale OAuth client di tipo *Web application* con tra i redirect URI autorizzati `https://<dominio>/api/integrations/google/callback`, poi imposta le tre variabili. In Impostazioni → Integrazioni premi **Collega Google**; l’app è in Production, quindi i primi accessi vanno autorizzati utente per utente. Google serve per la sincronizzazione del calendario e per leggere l’inbox Gmail.
 
@@ -106,9 +106,12 @@ L'auto-risposta si attiva solo con tre condizioni: interruttore globale in *Assi
 npm test          # suite Vitest (applica le migrazioni al database della run)
 npx tsc --noEmit  # controllo tipi
 npm run diagnose:ai # messaggio di prova alla Developer API: provider, modello, latenza, errore
+npm run diagnose:db # prova DATABASE_URL e DIRECT_URL: piano Prisma, credenziali o rete
 npm run db:check  # migrazioni ancora allineate a schema.prisma
 npm run build     # generate + tsc (senza database)
 ```
+
+`npm run diagnose:db` esegue una `SELECT 1` su `DATABASE_URL` e, se impostata, su `DIRECT_URL`, e riporta host, latenza ed esito distinguendo **blocco del piano Prisma**, **credenziali rifiutate** e **rete non raggiungibile**, ciascuno con il proprio rimedio. Password e stringa di connessione non vengono mai stampate, nemmeno quando compaiono nel messaggio d'errore. Uscita 0 se tutte le prove riescono, 1 se almeno una fallisce (compreso il blocco del piano), 2 se nessuna delle due variabili è impostata.
 
 **Test end-to-end di Buffy.** `npm test` include `tests/agent.e2e.test.ts`: avvia il server HTTP reale sul database della run e un provider AI locale OpenAI-compatibile, con `AGENT_API_KEY` di prova verificata come Bearer. Copre azioni solo proposte senza scritture, preventivo con totali, accettazione con fattura bozza, pagamento dopo la numerazione fiscale, ricevuta emessa e annullata, messaggio al cliente inviato solo alla conferma. Per un controllo in sola lettura sul provider vero configurato in `.env`: `AGENT_E2E_LIVE=1 npm test -- tests/agent.e2e.test.ts` (una chiamata reale, nessuna azione applicata).
 
@@ -120,7 +123,7 @@ La suite e il controllo delle migrazioni hanno bisogno di un database. In CI usa
 npm run test:locale
 ```
 
-Lo script avvia un container `postgres:17` sulla porta 5432, attende che accetti connessioni TCP, esporta `DATABASE_URL` e `DATABASE_URL_TEST` verso `postgresql://postgres:postgres@localhost:5432/postgres` (la stessa URL della CI), esegue `db:migrate`, `db:check` e `npm test`, e infine rimuove il container. Se un container con quel nome è già attivo lo riusa e non lo ferma. Serve Docker; con la porta 5432 occupata: `PORTA_PG=5433 npm run test:locale`.
+Lo script avvia un Postgres 17 usa-e-getta, esporta `DATABASE_URL`, `DATABASE_URL_TEST` e `DIRECT_URL` verso di lui — anche `DIRECT_URL`, altrimenti `db:migrate` e `db:check` userebbero quella del `.env`, cioè il database remoto — esegue `db:migrate`, `db:check` e `npm test`, e infine lo ferma e lo cancella. Con Docker è un container `postgres:17` sulla porta 5432, riusato se già attivo. Senza Docker usa il **PostgreSQL 17 di Homebrew** in un cluster temporaneo su una porta libera, avviato con `LC_ALL=C` (con un altro locale, su macOS, il postmaster non parte). `PORTA_PG=5433` forza la porta.
 
 Il file `.env` non viene modificato: le variabili valgono solo per quella esecuzione. Puntare i test all'endpoint diretto del database cloud non è una scorciatoia consigliata: le connessioni dirette sono limitate dal piano, la suite ne apre più di una in parallelo e ogni esecuzione crea database temporanei.
 
