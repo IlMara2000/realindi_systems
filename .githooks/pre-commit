@@ -1,0 +1,11 @@
+#!/bin/sh
+# Blocca il commit di file di credenziali. Si salta solo con --no-verify.
+blocked=$(git diff --cached --name-only --diff-filter=ACMR \
+  | grep -Ei '(^|/)\.env($|\.)' \
+  | grep -Eiv '(^|/)\.env\.(example|sample|template)$')
+if [ -n "$blocked" ]; then
+  echo "Commit rifiutato: file di credenziali in stage." >&2
+  echo "$blocked" | sed 's/^/  /' >&2
+  echo "Rimuovili con: git rm --cached <file>" >&2
+  exit 1
+fi

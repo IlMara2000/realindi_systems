@@ -269,3 +269,11 @@ node --check static/fiscal.js
 I test integrati HTTP usano una cartella temporanea: coprono calcolo importi, blocco preventivi accettati, conversione unica in fattura, progressivo, dati storici della fattura, accessi, origine richieste, logout, allegati, backup/ripristino e doppia prenotazione concorrente. Coprono inoltre il preventivatore dal progetto, la conservazione delle ipotesi, le richieste di generazione concorrenti e il ripristino delle stime. I casi fiscali includono ordinario con contributo/ritenuta, forfettario con bollo, privato italiano, cliente estero, IVA mista/split payment, modifiche dopo conferma, XML immutabili e backup/ripristino degli XML. Node serve solo per il controllo della sintassi frontend; non è richiesto per avviare il CRM.
 
 Struttura: `app.py` (API e persistenza), `estimator.py` (regole di stima), `fiscal.py` (controlli, calcoli fiscali, XML/XSD), `schemas/` (schemi ufficiali e fonti), `manage.py` (ripristino), `static/` (interfaccia), `tests/` (test), `.21st/` (contesto visuale).
+
+## Hook pre-commit
+
+Dopo il clone abilita il controllo che blocca il commit di file `.env*`:
+
+```sh
+./scripts/install-hooks.sh
+```
