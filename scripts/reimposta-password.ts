@@ -22,6 +22,7 @@ import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
 import { Client } from "pg";
 import { CODICI_EMERGENZA, LIMITE_TENTATIVI_LOGIN, hashCodice, hashPassword } from "../src/util.js";
+import { ETICHETTE, classifica, descriviHost, rimedio } from "./diagnose-db.js";
 
 const MIN_LUNGHEZZA = 12;
 
@@ -47,12 +48,6 @@ export interface StatoAccesso {
   bloccati: IpBloccato[];
   /** Ultimo accesso riuscito registrato dall'app (null se lo storico è vuoto). */
   ultimoAccesso: { at: number; ip: string; via: string } | null;
-}
-
-/** Host e nome del database, senza credenziali: serve a dire dove si scrive. */
-function istanza(connectionString: string): string {
-  const parsed = new URL(connectionString);
-  return `${parsed.host}${parsed.pathname}`;
 }
 
 /** Data e ora leggibili di un istante in millisecondi (Europe/Rome). */
@@ -270,18 +265,21 @@ async function chiediNuovaPassword(): Promise<string> {
   return prima;
 }
 
-function messaggioDatabase(err: unknown): string {
-  const code = (err as { code?: string })?.code;
-  if (code === "42P01") {
+/**
+ * Errore in una riga, con la stessa classificazione e lo stesso vocabolario di
+ * `npm run diagnose:db` e `npm run db:pulisci-test`: piano Prisma, credenziali
+ * o rete, non tre elenchi di codici da tenere allineati in tre file.
+ */
+function messaggioDatabase(err: unknown, connectionString = ""): string {
+  // Caso di questo comando, non un guasto di connessione: le migrazioni non
+  // sono mai state applicate, quindi la tabella da leggere non esiste.
+  if ((err as { code?: string })?.code === "42P01") {
     return "Il database non ha la tabella settings: esegui prima `npm run db:migrate`.";
   }
-  if (code === "28P01" || code === "28000") {
-    return "Il database ha rifiutato le credenziali: controlla DATABASE_URL nel file .env.";
-  }
-  if (code === "ENOTFOUND" || code === "ECONNREFUSED" || code === "ETIMEDOUT") {
-    return "Database non raggiungibile: controlla la connessione e DATABASE_URL.";
-  }
-  return (err as Error)?.message ?? String(err);
+  const { esito, codice, messaggio } = classifica(err, connectionString);
+  const intestazione = `${ETICHETTE[esito]}${codice ? ` [${codice}]` : ""}: ${messaggio}`;
+  const consiglio = rimedio(esito, "DATABASE_URL");
+  return consiglio ? `${intestazione}\n${consiglio}` : intestazione;
 }
 
 async function main(): Promise<void> {
@@ -291,7 +289,7 @@ async function main(): Promise<void> {
   }
   // Dove si scrive: un .env che punta alla produzione credendo di essere in
   // locale non deve poter reimpostare il workspace vero senza accorgersene.
-  console.log(`Database: ${istanza(connectionString)}`);
+  console.log(`Database: ${descriviHost(connectionString) ?? "host non riconosciuto"}`);
 
   if (process.argv.includes("--stato")) {
     const stato = await statoAccesso(connectionString);
