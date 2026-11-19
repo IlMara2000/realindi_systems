@@ -4,8 +4,12 @@
 // DATABASE_URL_TEST e ne svuota le tabelle. I `realindi_test_run_<ts>_<nonce>`
 // rimasti sono quelli delle run interrotte di prima (Ctrl+C, worker ucciso,
 // connessione caduta): occupano spazio nell'account Prisma e, se molti,
-// contribuiscono al limite del piano che ha bloccato il database. Questo
-// comando li elenca e — solo dopo conferma — li elimina.
+// contribuiscono al limite del piano che ha bloccato il database.
+//
+// La suite li elimina già da sola all'avvio (quelli più vecchi di un'ora) e
+// alla fine della run (quelli nati durante la run, vedi tests/global-setup.ts).
+// Questo comando serve per i casi che restano: una run interrotta da pochi
+// minuti, o un residuo che l'ultima pulizia non è riuscita a eliminare.
 //
 //   npm run db:pulisci-test              (elenca i residui e chiede conferma)
 //   npm run db:pulisci-test -- --tutti   (include anche quelli creati nell'ultima ora)
@@ -14,37 +18,12 @@
 // Usa DATABASE_URL_TEST: i database delle run nascono accanto a quello, quindi
 // è la connessione giusta per vederli. Il database indicato dall'URL non viene
 // mai toccato: si eliminano solo nomi che iniziano con `realindi_test_run_`.
+// Elenco, soglia e nomi ammessi stanno in tests/test-db.ts, gli stessi che usa
+// la suite: una regola sola, nessuna copia che può divergere.
 import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
-import { Client } from "pg";
-import { testUrlFromEnv } from "../tests/test-db.js";
-
-const PREFIX = "realindi_test_run_";
-
-/**
- * Un database creato da meno di un'ora può appartenere a una run ancora in
- * corso (una run dura minuti): lo si elenca ma, salvo `--tutti`, non si tocca.
- * È la stessa soglia con cui `tests/global-setup.ts` considera appeso un
- * database trovato all'avvio.
- */
-const RECENTE_MS = 60 * 60 * 1000;
-
-/** Nome ammesso: prefisso delle run e solo caratteri generati dal setup. */
-const NOME_VALIDO = new RegExp(`^${PREFIX}[a-z0-9]+_[a-f0-9]+$`);
-
-export interface DatabaseTest {
-  nome: string;
-  /** Età ricavata dal timestamp base36 nel nome; null se il nome non lo contiene. */
-  etaMs: number | null;
-  /** true se una run potrebbe ancora usarlo. */
-  recente: boolean;
-}
-
-/** Host e nome del database, senza credenziali: serve a dire dove si agisce. */
-function istanza(connectionString: string): string {
-  const parsed = new URL(connectionString);
-  return `${parsed.host}${parsed.pathname}`;
-}
+import { ORFANO_MS, type DatabaseTest, eliminaDatabaseTest, elencoDatabaseTest, orfani, testUrlFromEnv } from "../tests/test-db.js";
+import { ETICHETTE, classifica, descriviHost, rimedio } from "./diagnose-db.js";
 
 /** Età leggibile: «12 minuti», «3 ore», «2 giorni». */
 function eta(ms: number): string {
@@ -67,67 +46,6 @@ function quando(ms: number): string {
   });
 }
 
-async function conClient<T>(connectionString: string, fn: (c: Client) => Promise<T>): Promise<T> {
-  const client = new Client({ connectionString });
-  await client.connect();
-  try {
-    return await fn(client);
-  } finally {
-    await client.end();
-  }
-}
-
-/**
- * Elenco in sola lettura dei database di test presenti sul server, dal più
- * vecchio al più recente. Non elimina niente.
- */
-export async function elencoDatabaseTest(connectionString: string): Promise<DatabaseTest[]> {
-  const nomi = await conClient(connectionString, async (c) => {
-    const result = await c.query<{ datname: string }>(
-      "SELECT datname FROM pg_database WHERE datname LIKE $1 ORDER BY datname",
-      [`${PREFIX}%`],
-    );
-    return result.rows.map((row) => row.datname);
-  });
-
-  const adesso = Date.now();
-  return nomi
-    .map((nome) => {
-      const stamp = Number.parseInt(nome.slice(PREFIX.length).split("_")[0], 36);
-      const etaMs = Number.isFinite(stamp) ? adesso - stamp : null;
-      return { nome, etaMs, recente: etaMs !== null && etaMs < RECENTE_MS };
-    })
-    .sort((a, b) => (b.etaMs ?? 0) - (a.etaMs ?? 0));
-}
-
-/**
- * Elimina un singolo database di test. Rifiuta i nomi che non siano delle run:
- * una variabile sbagliata non deve poter cancellare il database del gestionale.
- */
-export async function eliminaDatabaseTest(connectionString: string, nome: string): Promise<void> {
-  if (!NOME_VALIDO.test(nome)) {
-    throw new Error(`Nome rifiutato: «${nome}» non è un database di test.`);
-  }
-  const identificatore = `"${nome.replace(/"/g, '""')}"`;
-
-  // WITH (FORCE) chiude le connessioni rimaste appese; il pool gestito può
-  // impiegare un istante a rilasciarle, quindi si riprova un paio di volte
-  // invece di lasciare il database appeso come prima.
-  let ultimo: unknown = null;
-  for (let tentativo = 0; tentativo < 5; tentativo++) {
-    try {
-      await conClient(connectionString, (c) =>
-        c.query(`DROP DATABASE IF EXISTS ${identificatore} WITH (FORCE)`).then(() => undefined),
-      );
-      return;
-    } catch (error) {
-      ultimo = error;
-      await new Promise((done) => setTimeout(done, 300));
-    }
-  }
-  throw ultimo;
-}
-
 /** Domanda sì/no sul terminale (visibile: non è un segreto). */
 function conferma(domanda: string): Promise<boolean> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -139,30 +57,22 @@ function conferma(domanda: string): Promise<boolean> {
   });
 }
 
-function messaggioDatabase(err: unknown): string {
-  const msg = (err as Error)?.message ?? String(err);
-  // Restrizione dell'account Prisma: nessun comando può passare finché non è
-  // rimossa dal supporto. Il messaggio deve dire questo, non «connessione persa».
-  if (/planLimitReached/i.test(msg)) {
-    return (
-      "L'account Prisma rifiuta la connessione con la restrizione «planLimitReached».\n" +
-      "Non dipende dal comando: serve che il supporto Prisma sblocchi l'account.\n" +
-      "Appena è sbloccato, rilancia lo stesso comando: eliminerà i database residui."
-    );
-  }
-  const code = (err as { code?: string })?.code;
-  if (code === "28P01" || code === "28000") {
-    return "Il database ha rifiutato le credenziali: controlla DATABASE_URL_TEST nel file .env.";
-  }
-  if (code === "ENOTFOUND" || code === "ECONNREFUSED" || code === "ETIMEDOUT") {
-    return "Database non raggiungibile: controlla la connessione e DATABASE_URL_TEST.";
-  }
-  return msg;
+/**
+ * Errore in una riga, con la stessa classificazione e lo stesso vocabolario di
+ * `npm run diagnose:db`: piano Prisma, credenziali o rete, non tre elenchi di
+ * codici da tenere allineati a mano in due file. La stringa di connessione, se
+ * passata, serve alla redazione del messaggio (mai stampata).
+ */
+function messaggioDatabase(err: unknown, connectionString = ""): string {
+  const { esito, codice, messaggio } = classifica(err, connectionString);
+  const intestazione = `${ETICHETTE[esito]}${codice ? ` [${codice}]` : ""}: ${messaggio}`;
+  const consiglio = rimedio(esito, "DATABASE_URL_TEST");
+  return consiglio ? `${intestazione}\n${consiglio}` : intestazione;
 }
 
 async function main(): Promise<void> {
   const connectionString = testUrlFromEnv();
-  console.log(`Server dei test: ${istanza(connectionString)}`);
+  console.log(`Server dei test: ${descriviHost(connectionString) ?? "host non riconosciuto"}`);
 
   const elenco = await elencoDatabaseTest(connectionString);
   if (!elenco.length) {
@@ -171,8 +81,8 @@ async function main(): Promise<void> {
   }
 
   const tutti = process.argv.includes("--tutti");
-  const residui = elenco.filter((db) => tutti || !db.recente);
-  const inCorso = elenco.filter((db) => !tutti && db.recente);
+  const residui = tutti ? elenco : orfani(elenco);
+  const inCorso = tutti ? [] : elenco.filter((db) => db.recente);
 
   const riga = (db: DatabaseTest): string => {
     const quando_ = db.etaMs === null ? "data sconosciuta" : `${quando(Date.now() - db.etaMs)} (${eta(db.etaMs)} fa)`;
@@ -188,7 +98,7 @@ async function main(): Promise<void> {
 
   if (inCorso.length) {
     console.log(
-      `\nCreati da meno di un'ora, forse una run in corso — non li tocco (${inCorso.length}):`,
+      `\nCreati da meno di ${Math.round(ORFANO_MS / 60000)} minuti, forse una run in corso — non li tocco (${inCorso.length}):`,
     );
     for (const db of inCorso) console.log(riga(db));
     console.log("Per includerli: npm run db:pulisci-test -- --tutti");
@@ -222,7 +132,7 @@ async function main(): Promise<void> {
       console.log(`Eliminato: ${db.nome}`);
     } catch (error) {
       falliti.push(db.nome);
-      console.error(`Non eliminato: ${db.nome} — ${messaggioDatabase(error)}`);
+      console.error(`Non eliminato: ${db.nome} — ${messaggioDatabase(error, connectionString)}`);
     }
   }
 
