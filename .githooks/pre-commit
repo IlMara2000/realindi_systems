@@ -1,8 +1,13 @@
 #!/bin/sh
 # Blocca il commit di file di credenziali. Si salta solo con --no-verify.
-blocked=$(git diff --cached --name-only --diff-filter=ACMR \
-  | grep -Ei '(^|/)\.env($|\.)' \
-  | grep -Eiv '(^|/)\.env\.(example|sample|template)$')
+# Copre: .env*, *.pem, *.key, *.p12, id_rsa/id_ed25519, nomi secrets/credentials/credenziali.
+# Passano i template (*.example*, *.sample*, *.template*) e i file di codice con
+# quei nomi (es. set-google-credentials.sh), che non contengono credenziali.
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+blocked=$(printf '%s\n' "$staged" | grep -Ei \
+  '(^|/)(\.env($|\.)|[^/]*\.(pem|key|p12)$|id_(rsa|ed25519)$|secrets?($|\.)|credentials?($|\.)|credenziali($|\.))' \
+  | grep -Eiv '(\.example($|\.)|\.sample($|\.)|\.template($|\.))' \
+  | grep -Eiv '\.(sh|bash|zsh|js|mjs|cjs|ts|tsx|jsx|py|rb|go|java|rs|php|cs)$')
 if [ -n "$blocked" ]; then
   echo "Commit rifiutato: file di credenziali in stage." >&2
   echo "$blocked" | sed 's/^/  /' >&2
