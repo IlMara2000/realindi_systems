@@ -51,4 +51,10 @@ Limite dichiarato: il link è raggiungibile solo con Mac acceso, server e tunnel
 
 **Verifiche.** `npx tsc --noEmit` → 0. `vitest run` → 13 file, **137 test**, uscita 0. `/api/health`: 200 in 27 ms con database sano; 503 in 2,005 s con indirizzo che non risponde; `/api/notes` e `/api/clients` ancora 401. `db:check` verde con `DIRECT_URL` (uscita 0, «Migrazioni allineate allo schema.») e rifiutato senza consenso su host remoto (uscita 1). `db:migrate` con `DATABASE_URL` irraggiungibile e `DIRECT_URL` valido: 21 tabelle e 3 migrazioni applicate su un database nuovo, poi eliminato. Nessun database temporaneo residuo.
 
-**Da completare.** Aggiungere `DIRECT_URL` fra le variabili di Vercel; creare su GitHub la variable `PROD_URL` e il secret `DATABASE_URL_TEST` (più `SLACK_WEBHOOK_URL` se serve la notifica); `test:locale` non è stato eseguito perché Docker non è installato su questa macchina; la segnalazione a Prisma va ancora inviata.
+**Da completare.** Aggiungere `DIRECT_URL` fra le variabili di Vercel; `SLACK_WEBHOOK_URL` se serve la notifica Slack (oggi resta l'email di GitHub); `test:locale` non è stato eseguito perché Docker non è installato su questa macchina; la segnalazione a Prisma va ancora inviata.
+
+## Sorveglianza attiva (25 novembre 2026)
+
+Impostate su GitHub la variable `PROD_URL=https://realindi.vercel.app` e il secret `DATABASE_URL_TEST` (database `realindi_test`): la X rossa delle run precedenti era solo questa configurazione mancante, non un guasto. Run manuale [45610064432](https://github.com/IlMara2000/realindi_systems/actions/runs/45610064432) verde: `/api/health` 200 `{"status":"ok"}`, pooler e endpoint diretto 3/3 su entrambi.
+
+Il controllo di salute interroga davvero il database (`SELECT 1` via Prisma, timeout 2 s): con `DATABASE_URL` irraggiungibile risponde 503 `{"status":"degraded"}` in pochi millisecondi, verificato in locale. Ora il workflow accetta un 200 solo se il corpo contiene `"status":"ok"`, così un proxy o una pagina d'errore non passano per un servizio sano.
