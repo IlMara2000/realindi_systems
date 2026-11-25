@@ -672,7 +672,7 @@ function invoices() {
       "Fatture pronte, meno lavoro ripetitivo.",
       "Ogni preventivo accettato genera automaticamente una bozza.",
     ) +
-    `<div class="callout">Ogni fattura richiede la verifica dei dati aziendali e del trattamento fiscale. Il file XML generato viene validato; invio allo SdI e conservazione non sono ancora collegati.</div>` +
+    `<div class="callout">Ogni fattura richiede la verifica dei dati aziendali e del trattamento fiscale. L'XML viene validato e numerato; se la PEC è collegata in Impostazioni, il file parte subito verso lo SdI e le ricevute aggiornano lo stato.</div>` +
     searchbar("Cerca numero o cliente…", ["draft", "issued", "paid"]) +
     `<section class="panel">${
       rows.length
@@ -1211,7 +1211,7 @@ function settingsView() {
       "Un workspace che ti somiglia.",
       "Dati attività, parametri economici e disponibilità.",
     ) +
-    `<form id="settings-form"><div class="settings-grid">${panel("Attività e fatturazione", `<div class="panel-body form-grid">${field("Nome attività", "business_name", "text", s.business_name, "required")}${field("Il tuo nome", "owner_name", "text", s.owner_name)}${field("Email attività", "email", "email", s.email)}${field("Partita IVA", "vat_number", "text", s.vat_number)}${field("Codice fiscale", "tax_code", "text", s.tax_code)}${field("IBAN", "iban", "text", s.iban)}${area("Indirizzo completo", "address", s.address)}${field("Dicitura aggiuntiva", "tax_label", "text", s.tax_label)}${field("IVA indicativa preventivi (%)", "vat_rate", "number", s.vat_rate, 'min="0" max="100" step="0.01" required')}${field("Tariffa oraria (€)", "hourly_rate", "number", s.hourly_rate, 'min="0" step="0.01" required')}<p class="hint">Partita IVA senza prefisso paese. Completa il profilo fiscale aziendale qui sotto: ogni fattura richiederà una verifica dedicata.</p></div>`)}${panel("Pagina di prenotazione", `<div class="panel-body form-grid">${field("Titolo dell’incontro", "booking_title", "text", s.booking_title, "required")}${field("Durata (minuti)", "booking_duration", "number", s.booking_duration, 'min="15" max="180" required')}${area("Presentazione", "booking_description", s.booking_description)}${field("Disponibile dalle (ora)", "booking_start", "number", s.booking_start, 'min="0" max="23" required')}${field("Alle (ora)", "booking_end", "number", s.booking_end, 'min="1" max="23" required')}${field("Preavviso minimo (ore)", "booking_notice", "number", s.booking_notice, 'min="0" max="720" required')}${field("Prenotabile entro (giorni)", "booking_horizon", "number", s.booking_horizon, 'min="1" max="180" required')}${field("Indirizzo pubblico (HTTPS)", "public_url", "url", s.public_url, 'placeholder="https://prenotazioni.esempio.it"')}<p class="hint">Indirizzo su cui i clienti aprono le prenotazioni, solo dominio senza percorso. Vuoto: il link usa l'indirizzo da cui stai navigando. «Pubblica prenotazioni.command» lo imposta automaticamente quando avvia il tunnel.</p><div class="field full"><label>Giorni disponibili · Europe/Rome</label><div class="check-row">${["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"].map((t, i) => `<label><input type="checkbox" name="day" value="${i}" ${s.booking_days.includes(i) ? "checked" : ""}>${t}</label>`).join("")}</div></div><div class="field full check-row"><label><input type="checkbox" name="booking_enabled" ${s.booking_enabled ? "checked" : ""}>Accetta nuove prenotazioni</label></div></div>`)}</div>${fiscalSettings(s)}<div class="error" role="alert"></div><div class="form-actions"><button class="primary" type="submit">Salva impostazioni</button></div></form><div class="section-gap">${panel("I tuoi dati restano tuoi", `<div class="panel-body"><p class="subtitle">Esporta database e documenti in un archivio ZIP. Il backup contiene dati personali: conservalo in un luogo protetto.</p><div class="section-gap"><a class="button" href="/api/backup">Scarica backup completo ↓</a></div><p class="hint">Il ripristino è disponibile con lo strumento manage.py incluso nel progetto.</p></div>`)}</div><div class="section-gap">${panel(
+    `<form id="settings-form"><div class="settings-grid">${panel("Attività e fatturazione", `<div class="panel-body form-grid">${field("Nome attività", "business_name", "text", s.business_name, "required")}${field("Il tuo nome", "owner_name", "text", s.owner_name)}${field("Email attività", "email", "email", s.email)}${field("Partita IVA", "vat_number", "text", s.vat_number)}${field("Codice fiscale", "tax_code", "text", s.tax_code)}${field("IBAN", "iban", "text", s.iban)}${area("Indirizzo completo", "address", s.address)}${field("Dicitura aggiuntiva", "tax_label", "text", s.tax_label)}${field("IVA indicativa preventivi (%)", "vat_rate", "number", s.vat_rate, 'min="0" max="100" step="0.01" required')}${field("Tariffa oraria (€)", "hourly_rate", "number", s.hourly_rate, 'min="0" step="0.01" required')}<p class="hint">Partita IVA senza prefisso paese. Completa il profilo fiscale aziendale qui sotto: ogni fattura richiederà una verifica dedicata.</p></div>`)}${panel("Pagina di prenotazione", `<div class="panel-body form-grid">${field("Titolo dell’incontro", "booking_title", "text", s.booking_title, "required")}${field("Durata (minuti)", "booking_duration", "number", s.booking_duration, 'min="15" max="180" required')}${area("Presentazione", "booking_description", s.booking_description)}${field("Disponibile dalle (ora)", "booking_start", "number", s.booking_start, 'min="0" max="23" required')}${field("Alle (ora)", "booking_end", "number", s.booking_end, 'min="1" max="23" required')}${field("Preavviso minimo (ore)", "booking_notice", "number", s.booking_notice, 'min="0" max="720" required')}${field("Prenotabile entro (giorni)", "booking_horizon", "number", s.booking_horizon, 'min="1" max="180" required')}${field("Indirizzo pubblico (HTTPS)", "public_url", "url", s.public_url, 'placeholder="https://prenotazioni.esempio.it"')}<p class="hint">Indirizzo su cui i clienti aprono le prenotazioni, solo dominio senza percorso. Vuoto: il link usa l'indirizzo da cui stai navigando. «Pubblica prenotazioni.command» lo imposta automaticamente quando avvia il tunnel.</p><div class="field full"><label>Giorni disponibili · Europe/Rome</label><div class="check-row">${["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"].map((t, i) => `<label><input type="checkbox" name="day" value="${i}" ${s.booking_days.includes(i) ? "checked" : ""}>${t}</label>`).join("")}</div></div><div class="field full check-row"><label><input type="checkbox" name="booking_enabled" ${s.booking_enabled ? "checked" : ""}>Accetta nuove prenotazioni</label></div></div>`)}</div>${fiscalSettings(s)}<div class="error" role="alert"></div><div class="form-actions"><button class="primary" type="submit">Salva impostazioni</button></div></form>${sdiSettingsPanel(state.sdi)}<div class="section-gap">${panel("I tuoi dati restano tuoi", `<div class="panel-body"><p class="subtitle">Esporta database e documenti in un archivio ZIP. Il backup contiene dati personali: conservalo in un luogo protetto.</p><div class="section-gap"><a class="button" href="/api/backup">Scarica backup completo ↓</a></div><p class="hint">Il ripristino è disponibile con lo strumento manage.py incluso nel progetto.</p></div>`)}</div><div class="section-gap">${panel(
       "Integrazioni",
       `<div class="panel-body">${integChips}${googleBlock}${appleBlock}</div>`,
     )}</div>`
@@ -1698,6 +1698,24 @@ function bindView() {
         b.disabled = false;
       }
     };
+  if ($("#sdi-form"))
+    $("#sdi-form").onsubmit = async (e) => {
+      e.preventDefault();
+      const f = e.target,
+        d = Object.fromEntries(new FormData(f));
+      d.secure = f.secure.checked;
+      const b = $("[type=submit]", f);
+      b.disabled = true;
+      try {
+        await api("/api/sdi/config", d);
+        await refresh();
+        toast("PEC salvata.");
+      } catch (err) {
+        $(".error", f).textContent = err.message;
+      } finally {
+        b.disabled = false;
+      }
+    };
   if ($("#password-form"))
     $("#password-form").onsubmit = async (e) => {
       e.preventDefault();
@@ -1958,7 +1976,7 @@ function documentHtml(kind, record) {
       (i) =>
         `<tr><td>${esc(i.description)}</td><td>${esc(i.hours)}</td><td>${money(Number(i.rate) * 100)}</td><td>× ${esc(i.factor)}</td><td>${money(Number(i.extra) * 100)}</td><td>${money(i.amount)}</td></tr>`,
     ),
-  )}${isInvoice && record.snapshot.fiscal ? fiscalPrint(record) : `<div class="totals"><div><span>Imponibile</span><b>${money(record.subtotal)}</b></div><div><span>IVA ${esc(isInvoice ? record.snapshot.vat_rate : record.vat_rate)}%</span><b>${money(record.vat)}</b></div><div class="grand"><span>Totale</span><b>${money(record.total)}</b></div></div>`}<div class="notes">${esc(notes)}</div><footer>${esc(isInvoice && record.snapshot.fiscal ? s.tax_regime : s.tax_label)}${s.iban ? "<br>IBAN: " + esc(s.iban) : ""}${isInvoice ? "<br>Non trasmessa al Sistema di Interscambio. Generazione XML e accettazione SdI sono stati distinti." : ""}</footer></article>`;
+  )}${isInvoice && record.snapshot.fiscal ? fiscalPrint(record) : `<div class="totals"><div><span>Imponibile</span><b>${money(record.subtotal)}</b></div><div><span>IVA ${esc(isInvoice ? record.snapshot.vat_rate : record.vat_rate)}%</span><b>${money(record.vat)}</b></div><div class="grand"><span>Totale</span><b>${money(record.total)}</b></div></div>`}<div class="notes">${esc(notes)}</div><footer>${esc(isInvoice && record.snapshot.fiscal ? s.tax_regime : s.tax_label)}${s.iban ? "<br>IBAN: " + esc(s.iban) : ""}${isInvoice ? "<br>" + esc(record.xml_generated ? sdiLabel(record.sdi_state || "not_sent") : "XML non ancora generato") : ""}</footer></article>`;
 }
 function viewQuote(id) {
   const q = state.quotes.find((x) => x.id === Number(id));
@@ -1967,11 +1985,48 @@ function viewQuote(id) {
     `<div class="actions">${q.estimate ? btn("Ipotesi iniziali", "estimate-source", id) : ""}${btn("Stampa / Salva PDF", "print-quote", id)}${q.status === "draft" ? btn("Segna consegnato", "quote-sent", id) : ""}${["draft", "sent"].includes(q.status) ? btn("Registra accettazione", "quote-accepted", id, "primary small") + btn("Rifiutato", "quote-rejected", id) : ""}</div>${documentHtml("quote", q)}`,
   );
 }
+const SDI_LABELS = {
+  not_sent: "SdI: non inviata",
+  sent: "SdI: in attesa di ricevuta",
+  delivered: "SdI: consegnata",
+  rejected: "SdI: scartata",
+  failed: "SdI: mancata consegna",
+  accepted: "SdI: accettata dal cliente",
+  refused: "SdI: rifiutata dal cliente",
+};
+function sdiLabel(stato) {
+  return SDI_LABELS[stato] || SDI_LABELS.not_sent;
+}
+function sdiPillClass(stato) {
+  if (stato === "delivered" || stato === "accepted") return "paid";
+  if (stato === "rejected" || stato === "failed" || stato === "refused") return "overdue";
+  if (stato === "sent") return "sent";
+  return "";
+}
+function sdiSettingsPanel(sd) {
+  const c = (sd && sd.config) || {};
+  const attivo = !!(sd && sd.configured);
+  return `<div class="section-gap"><section class="panel"><div class="panel-head"><h2>Invio allo SdI (PEC)</h2>${attivo ? '<span class="pill paid">Attivo</span>' : '<span class="pill">Da collegare</span>'}</div><div class="panel-body">
+    <p class="subtitle">Appena l'XML di una fattura è generato, il file viene spedito dalla tua PEC a sdi01@pec.fatturapa.it. Le ricevute di consegna, scarto o esito tornano sulla stessa casella e aggiornano lo stato della fattura. Il codice destinatario è del cliente: non si genera qui.</p>
+    <form id="sdi-form" class="form-grid">
+      ${field("Host SMTP della PEC", "host", "text", c.host || "", 'placeholder="smtps.pec.esempio.it"')}${field("Porta SMTP", "port", "number", c.port || 465, 'min="1" max="65535"')}
+      ${field("Host IMAP della PEC", "imap_host", "text", c.imap_host || "", 'placeholder="imaps.pec.esempio.it"')}${field("Porta IMAP", "imap_port", "number", c.imap_port || 993, 'min="1" max="65535"')}
+      ${field("Indirizzo PEC", "user", "email", c.user || "", 'placeholder="nome@pec.esempio.it" autocomplete="username"')}${field("Mittente (di solito lo stesso indirizzo)", "from", "email", c.from || "", 'autocomplete="username"')}
+      ${field("Password PEC (salvata cifrata)", "password", "password", "", `placeholder="${c.user ? "Già salvata — inseriscine una nuova per cambiarla" : "Password della casella"}" autocomplete="new-password"`)}
+      <div class="field full check-row"><label><input type="checkbox" name="secure" ${c.secure !== false ? "checked" : ""}>Connessione cifrata TLS (consigliata)</label></div>
+      <div class="error" role="alert"></div>
+      <div class="form-actions"><button class="primary" type="submit">Salva PEC</button><button type="button" class="secondary" data-action="sdi-sync">Aggiorna ricevute</button></div>
+    </form>
+    ${sd && sd.missing && sd.missing.length ? `<div class="callout"><strong>Manca ancora</strong><ul>${sd.missing.map((m) => `<li>${esc(m)}</li>`).join("")}</ul></div>` : ""}
+    <p class="hint">La password non viene mai riletta dal server. Gli stati restando scritti sulla fattura: un invio fallito si può ritentare.</p>
+  </div></section></div>`;
+}
 function viewInvoice(id) {
   const i = state.invoices.find((x) => x.id === Number(id));
+  const sd = i.sdi_state || "not_sent";
   showModal(
     "Fattura " + (i.number || "in bozza"),
-    `<div class="actions">${btn("Stampa / Salva PDF", "print-invoice", id)}${i.xml_generated ? `<a class="button small" href="/api/invoices/${i.id}/xml">Scarica XML</a>` : ""}${i.status === "draft" ? btn("Verifica fiscale e genera XML", "invoice-issued", id, "primary small") : ""}${i.status === "issued" ? btn("Segna come pagata", "invoice-paid", id, "primary small") : ""}</div>${documentHtml("invoice", i)}`,
+    `<div class="actions">${btn("Stampa / Salva PDF", "print-invoice", id)}${i.xml_generated ? `<a class="button small" href="/api/invoices/${i.id}/xml">Scarica XML</a>` : ""}${i.status === "draft" ? btn("Verifica fiscale e genera XML", "invoice-issued", id, "primary small") : ""}${i.status === "issued" ? btn("Segna come pagata", "invoice-paid", id, "primary small") : ""}${i.xml_generated ? `<span class="pill ${sdiPillClass(sd)}">${esc(sdiLabel(sd))}</span>` : ""}${i.xml_generated ? btn(sd === "sent" ? "Reinvia allo SdI" : "Invia allo SdI", "invoice-sdi", id, "secondary small") : ""}${i.xml_generated ? btn("Aggiorna ricevute SdI", "sdi-sync", "", "secondary small") : ""}</div>${i.sdi_message ? `<p class="hint">${esc(i.sdi_message)}</p>` : ""}${documentHtml("invoice", i)}`,
   );
 }
 function confirmAction(title, text, action) {
@@ -2459,6 +2514,18 @@ document.addEventListener("click", async (e) => {
       );
     }
     if (a === "invoice-issued") return await fiscalWizard(id);
+    if (a === "invoice-sdi") {
+      const esito = await api("/api/invoices/sdi", { id });
+      await refresh();
+      toast("Fattura trasmessa allo SdI.");
+      return viewInvoice(id);
+    }
+    if (a === "sdi-sync") {
+      const esito = await api("/api/sdi/esiti", {});
+      await refresh();
+      toast(`Ricevute lette: ${esito.updated} aggiornate, ${esito.ignorate} senza fattura.`);
+      return;
+    }
     if (a === "fiscal-settings") {
       $("#modal").close();
       window.dispatchEvent(new CustomEvent("buffy:open", { detail: { prompt: "Aiutami a completare i dati fiscali dell'azienda." } }));

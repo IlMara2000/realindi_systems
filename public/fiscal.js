@@ -135,7 +135,7 @@ async function fiscalWizard(id) {
     <div class="section-gap"><button type="button" id="fiscal-check" class="secondary">Verifica dati e calcola riepilogo</button></div>
     <div id="fiscal-result" class="section-gap" aria-live="polite"></div>
     <div class="check-row section-gap"><label><input type="checkbox" name="fiscal_confirmed">Ho verificato azienda, destinatario e trattamento fiscale di questa fattura.</label></div>
-    <p class="hint">Genera un XML validato e assegna il numero definitivo. Il file non viene inviato allo SdI. L’accettazione SdI e la conservazione richiedono un servizio collegato.</p>${formBottom("Numera e genera XML")}
+    <p class="hint">Genera un XML validato e assegna il numero definitivo. Con la PEC collegata in Impostazioni il file viene trasmesso subito a sdi01@pec.fatturapa.it; senza PEC resta da inviare.</p>${formBottom("Numera e genera XML")}
     </form>`,
     async (d, form) => {
       if (!review || !form.elements.fiscal_confirmed.checked)

@@ -126,3 +126,18 @@ Scelte:
 `.github/workflows/verifica.yml` ha ora anche `workflow_dispatch`, così la CI si può lanciare a mano quando GitHub perde l'evento di un push (è successo con `cd70a8f`).
 
 `verifica.yml` usa ora `actions/checkout@v5` e `actions/setup-node@v5`: sparisce l'annotation di GitHub sul Node 20 deprecato. `sorveglianza.yml` è ancora su `@v4` (funziona: le action v4 girano su Node 24 forzato), quindi l'avviso resta in quel workflow finché non si aggiorna anche lì.
+## Invio delle fatture allo SdI via PEC (25 novembre 2026)
+
+`src/sdi.ts` collega il gestionale allo SdI con il canale PEC: l'XML validato viene spedito a `sdi01@pec.fatturapa.it` dalla casella PEC dell'azienda e le notifiche tornano sulla stessa casella. Il codice destinatario non viene generato: è del destinatario (assegnato dall'Agenzia a chi ha un canale di ricezione, o quello dell'intermediario).
+
+Come si attiva: Impostazioni → Invio allo SdI (PEC), con host/porta SMTP e IMAP, indirizzo PEC, mittente e password. La password è cifrata con `INTEGRATIONS_KEY` (AES-256-GCM) e non viene mai riletta dal server. Il riquadro elenca cosa manca: chiave, PEC, partita IVA, regime fiscale.
+
+Cosa succede dopo:
+
+- appena una fattura è numerata e l'XML esiste, `invioAutomatico` la trasmette se PEC e dati azienda sono completi; un errore non annulla la numerazione, resta scritto sulla riga con il motivo e si può ritentare con «Invia allo SdI»;
+- lo stato per fattura è `not_sent → sent → delivered | rejected | failed | accepted | refused`, con data di invio e ultimo esito; `POST /api/sdi/esiti` (o «Aggiorna ricevute SdI») rilegge la posta e applica `RicevutaConsegna`, `NotificaScarto`, `NotificaMancataConsegna`, `NotificaEsito` (EC01/EC02) e `NotificaDecorrenzaTermini`, riconoscendo la fattura dal `<NomeFile>`;
+- gli XML restano immutabili; le ricevute non li toccano.
+
+**Verifica.** `tests/sdi.test.ts` (8 test) su Postgres 17 temporaneo: notifiche riconosciute, PEC salvata senza restituire la password, elenco di ciò che manca, invio con trasporto simulato (destinatario `sdi01@pec.fatturapa.it`, file e contenuto corretti, stato `sent`), errore di autenticazione registrato e ritentabile, rifiuto senza XML e senza PEC, nessun invio automatico senza PEC, ricevute applicate e notifica di un'altra fattura ignorata. Suite completa 237 passati / 1 saltato (porta 55447, poi spenta e rimossa); `npx tsc --noEmit` → 0.
+
+**Limiti dichiarati:** l'invio reale non è stato provato (serve la PEC dell'azienda); la conservazione a norma resta da collegare; le notifiche vengono lette su richiesta, non da un cron.

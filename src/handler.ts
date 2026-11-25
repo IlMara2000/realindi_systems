@@ -85,6 +85,7 @@ import {
   trainFromSite,
 } from "./assistant.js";
 import { agentReply, executeAgentActions } from "./agent.js";
+import * as sdi from "./sdi.js";
 import { bookingLimit, cancelLimit, replyLimit } from "./ratelimit.js";
 import {
   activeLink,
@@ -824,6 +825,7 @@ async function handleGet(req: HandlerRequest): Promise<HandlerResponse> {
       conversations,
       assistant,
       knowledge,
+      sdi: await sdi.stato(),
     });
   }
 
@@ -854,6 +856,10 @@ async function handleGet(req: HandlerRequest): Promise<HandlerResponse> {
     return send(Buffer.from(inv.xml), 200, "application/xml; charset=utf-8", [
       ["Content-Disposition", `attachment; filename="${inv.xml_filename}"`],
     ]);
+  }
+
+  if (path === "/api/sdi/status") {
+    return send(await sdi.stato());
   }
 
   if (path.startsWith("/api/documents/")) {
@@ -1979,6 +1985,10 @@ async function handlePostFiscal(
         },
       });
     });
+    // Attivazione automatica: appena l'XML esiste e la PEC è configurata, la
+    // fattura parte. Un errore di invio non annulla la numerazione, resta
+    // registrato sulla fattura e si può ritentare.
+    await sdi.invioAutomatico(inv.id);
     return send({ id: inv.id, filename });
   }
 
@@ -1998,6 +2008,20 @@ async function handlePostFiscal(
       throw new Invalid("Cambio di stato non consentito.");
     }
     return send({ ok: true });
+  }
+
+  if (path === "/api/sdi/config") {
+    return send(await sdi.salvaConfig(d));
+  }
+
+  if (path === "/api/sdi/esiti") {
+    return send(await sdi.aggiornaEsiti());
+  }
+
+  if (path === "/api/invoices/sdi") {
+    const id = Number(d.id);
+    if (!Number.isInteger(id) || id <= 0) throw new Invalid("Identificativo non valido.");
+    return send(await sdi.inviaFattura(id));
   }
 
   return handlePostMisc(d, path);
