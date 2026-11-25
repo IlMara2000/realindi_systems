@@ -2003,6 +2003,9 @@ function sdiPillClass(stato) {
   if (stato === "sent") return "sent";
   return "";
 }
+// Minuti oltre i quali l'ultima lettura si considera ferma: il cron gira
+// ogni 30, quindi 90 minuti di silenzio sono già un guasto.
+const SDI_CRON_FERMO_MINUTI = 90;
 function sdiLastLettura(l) {
   if (!l) {
     return `<div class="callout"><strong>Nessuna lettura delle ricevute</strong><p>Il cron la esegue ogni 30 minuti; puoi provarla subito con «Aggiorna ricevute».</p></div>`;
@@ -2010,6 +2013,14 @@ function sdiLastLettura(l) {
   const quando = esc(timeLabel(l.at));
   if (!l.ok) {
     return `<div class="callout"><strong>Ultima lettura non riuscita</strong> · ${quando}<p>${esc(l.error || "Errore sconosciuto.")}</p></div>`;
+  }
+  // Il cron rilegge la casella ogni 30 minuti: oltre 90 minuti di silenzio
+  // vogliono dire che non sta girando, e le ricevute restano ferme senza che
+  // si veda da qui. Il riquadro è in rosso per non confonderlo con la riga
+  // informativa che segue.
+  const etaMs = Date.now() - new Date(l.at).getTime();
+  if (Number.isFinite(etaMs) && etaMs > SDI_CRON_FERMO_MINUTI * 60 * 1000) {
+    return `<div class="callout danger"><strong>Il cron non sta girando</strong> · ${quando}<p>L'ultima lettura delle ricevute risale a oltre ${SDI_CRON_FERMO_MINUTI} minuti fa, mentre il cron la esegue ogni 30. Controlla il workflow «Lettura ricevute SdI» su GitHub e la variabile CRON_SECRET su Vercel.</p></div>`;
   }
   const conta = [`${l.updated} aggiornate`, `${l.ignorate} senza fattura`, `${l.superate} più vecchie di quelle registrate`].join(", ");
   return `<p class="hint"><strong>Ultima lettura delle ricevute:</strong> ${quando} · ${esc(conta)} <span class="muted">(solo le notifiche nuove di quel giro)</span></p>`;
@@ -2668,6 +2679,7 @@ async function booking() {
 window.crmBindAppleForm = bindAppleForm;
 window.crmRefresh = refresh;
 window.crmToast = toast;
+window.sdiLastLettura = sdiLastLettura;
 (async () => {
   try {
     if (location.pathname.startsWith("/book/")) return await booking();

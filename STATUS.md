@@ -192,3 +192,15 @@ Ora `elaboraEsiti()` ricorda l'impronta SHA-256 del file di ogni notifica nella 
 Nel pannello la riga lo dice esplicitamente: «… · 3 aggiornate, 1 senza fattura, 2 più vecchie di quelle registrate (solo le notifiche nuove di quel giro)».
 
 **Verifica.** Due letture delle stesse notifiche danno la seconda volta `0 / 0 / 0`; una notifica senza fattura conta una volta sola e non si ripete; lo scarto già visto dopo un reinvio viene scartato senza essere ricontato. Migrazione: `prisma/migrations/20261125203000_sdi_notifiche_viste` (tabella `sdi_notifiche`, esclusa dal backup come `sdi_sync`: è stato dell'istanza).
+
+## Avviso «il cron non sta girando» (25 novembre 2026)
+
+Il pannello diceva *quando* era avvenuta l'ultima lettura, ma con uno sguardo veloce una data vecchia non si distingue da una di mezz'ora prima: se il workflow «Lettura ricevute SdI» si fermava, le fatture restavano in attesa di ricevuta senza che niente lo dicesse.
+
+Ora, se `last_lettura.at` è più vecchio di **90 minuti**, al posto della riga informativa compare un riquadro rosso: «Il cron non sta girando · 25 nov, 18:40 — L'ultima lettura delle ricevute risale a oltre 90 minuti fa, mentre il cron la esegue ogni 30. Controlla il workflow "Lettura ricevute SdI" su GitHub e la variabile CRON_SECRET su Vercel». La soglia sta in `SDI_CRON_FERMO_MINUTI` in `public/app.js`; 90 minuti sono tre giri saltati, quindi un ritardo di GitHub (10-20 minuti) non fa scattare l'avviso, un cron fermo sì.
+
+Gli altri casi restano come prima e hanno la precedenza: senza letture «Nessuna lettura delle ricevute», con `ok: false` l'errore dell'ultima lettura (che è la causa vera, non il silenzio). Il calcolo è nel browser sulla data ISO già presente in `state.sdi.last_lettura` (la risposta di `/api/state`), quindi nessuna migrazione e nessun campo nuovo sul server.
+
+**Verifica.** Nuovo `tests/sdi-cron.test.ts` (happy-dom, come `apple-form.test.ts`) chiama la funzione che disegna la riga: con una lettura di due ore fa compare «Il cron non sta girando» e la soglia; con dieci minuti fa resta la riga informativa con i conteggi; senza letture resta «Nessuna lettura delle ricevute». Suite completa 245 passati / 1 saltato, `npx tsc --noEmit` → 0, `node --check public/app.js` ok.
+
+**Limite.** Il pannello non è stato aperto nel browser: la resa del riquadro è verificata solo sul testo prodotto dalla funzione.
