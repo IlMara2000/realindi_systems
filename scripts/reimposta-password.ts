@@ -10,13 +10,20 @@
 //   - azzera `login_attempts`, altrimenti dopo dieci errori l'IP resta bloccato
 //     per quindici minuti anche con la password nuova.
 //
-//   npm run password:reimposta              (mostra il database, chiede conferma e la nuova password)
-//   npm run password:reimposta -- --stato   (solo diagnosi, non scrive nulla)
-//   npm run password:reimposta -- --sì      (salta la conferma, per gli script)
+//   npm run password:reimposta                    (mostra il database, chiede conferma e la nuova password)
+//   npm run password:reimposta -- --stato         (solo diagnosi, non scrive nulla)
+//   npm run password:reimposta -- --sì            (salta la conferma, per gli script)
+//   npm run password:reimposta -- --portachiavi   (salva password e codici nel Portachiavi di macOS:
+//                                                  non compaiono né qui né nella cronologia)
+//
+// Con --portachiavi i codici finiscono nel Portachiavi su una riga sola,
+// separati da «; »: `security` restituisce in esadecimale i valori con ritorni
+// a capo, e un valore così non si legge né si verifica a occhio.
 //
 // Usa DATABASE_URL (la stessa connessione dell'applicazione), quindi agisce
 // sull'istanza che si sta davvero usando: in locale o in produzione.
 import "dotenv/config";
+import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
@@ -25,6 +32,10 @@ import { CODICI_EMERGENZA, LIMITE_TENTATIVI_LOGIN, hashCodice, hashPassword } fr
 import { ETICHETTE, classifica, descriviHost, rimedio } from "./diagnose-db.js";
 
 const MIN_LUNGHEZZA = 12;
+
+/** Voci del Portachiavi: nomi fissi, così si ritrovano sempre allo stesso posto. */
+const SERVIZIO_PASSWORD = "REALINDI CRM - password";
+const SERVIZIO_CODICI = "REALINDI CRM - codici di emergenza";
 
 export interface EsitoReimpostazione {
   /** true se il workspace aveva già una password (sostituita), false se è stata creata. */
@@ -199,6 +210,73 @@ export async function reimpostaPassword(
   }
 }
 
+/**
+ * I codici su una riga sola, separati da «; ». Oltre a essere leggibili nel
+ * Portachiavi, restano confrontabili: un valore con ritorni a capo viene
+ * restituito da `security` in esadecimale e non si può verificare a occhio.
+ */
+export function codiciSuUnaRiga(codici: string[]): string {
+  return codici.join("; ");
+}
+
+/**
+ * Scrive password e codici nel Portachiavi di macOS e rilegge ogni voce per
+ * confermare che sia finito il valore giusto. I segreti passano come argomenti
+ * a `security` (senza shell, quindi senza interpolazione) e non vengono mai
+ * stampati.
+ */
+export function salvaNelPortachiavi(
+  password: string,
+  codici: string[],
+): { password: string; codici: string } {
+  if (process.platform !== "darwin") {
+    throw new Error("Il Portachiavi è disponibile solo su macOS: qui usa senza --portachiavi.");
+  }
+  const voci = [
+    { servizio: SERVIZIO_PASSWORD, etichetta: SERVIZIO_PASSWORD, valore: password },
+    {
+      servizio: SERVIZIO_CODICI,
+      etichetta: `${SERVIZIO_CODICI} (monouso, separati da punto e virgola)`,
+      valore: codiciSuUnaRiga(codici),
+    },
+  ];
+  for (const voce of voci) {
+    try {
+      execFileSync(
+        "security",
+        [
+          "add-generic-password",
+          "-a",
+          "realindi",
+          "-s",
+          voce.servizio,
+          "-l",
+          voce.etichetta,
+          "-w",
+          voce.valore,
+          "-U",
+        ],
+        { stdio: "pipe" },
+      );
+      const letto = execFileSync(
+        "security",
+        ["find-generic-password", "-a", "realindi", "-s", voce.servizio, "-w"],
+        { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+      ).replace(/\r?\n$/, "");
+      if (letto !== voce.valore) {
+        throw new Error(`la voce «${voce.servizio}» non corrisponde a quanto salvato`);
+      }
+    } catch (err) {
+      const dettaglio = (err as { stderr?: Buffer | string })?.stderr?.toString().trim();
+      throw new Error(
+        `Portachiavi non aggiornato (${voce.servizio}): ${dettaglio || (err as Error).message}. ` +
+          "Se macOS ha chiesto il permesso, ripeti consentendo l'accesso.",
+      );
+    }
+  }
+  return { password: SERVIZIO_PASSWORD, codici: SERVIZIO_CODICI };
+}
+
 /** Legge una riga dal terminale senza mostrarla (né sulla riga, né nella history). */
 function leggiNascosta(prompt: string): Promise<string> {
   return new Promise((resolve) => {
@@ -349,6 +427,18 @@ async function main(): Promise<void> {
   );
   console.log(`Password del workspace aggiornata. Sessioni aperte chiuse: ${esito.sessioniChiuse}.`);
   console.log("Blocco dei tentativi azzerato. Accedi da /app con la nuova password.");
+
+  if (process.argv.includes("--portachiavi")) {
+    const voci = salvaNelPortachiavi(nuova, esito.codiciEmergenza);
+    console.log(`Nel Portachiavi di macOS, sotto «${voci.password}» e «${voci.codici}»:`);
+    console.log(`  password e ${esito.codiciEmergenza.length} codici di emergenza, riletti e verificati.`);
+    console.log("Non compaiono qui: apri Accesso Portachiavi, cerca «REALINDI CRM» e mostra la voce.");
+    console.log(
+      "Ognuno vale una volta sola e il primo uso lo consuma: entra da /app senza terminale. I codici precedenti non valgono più.",
+    );
+    return;
+  }
+
   console.log("La password non viene mostrata: salvala ora nel gestore password.");
   console.log("");
   console.log(`Codici di emergenza (${esito.codiciEmergenza.length} nuovi, mostrati solo ora):`);
@@ -356,6 +446,7 @@ async function main(): Promise<void> {
   console.log(
     "Ognuno vale una volta sola e il primo uso lo consuma: entra da /app senza terminale. I codici precedenti non valgono più.",
   );
+  console.log("Con --portachiavi li salvo nel Portachiavi di macOS senza stamparli.");
 }
 
 const invokedDirectly =

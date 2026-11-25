@@ -4,7 +4,7 @@
 // bloccare l'accesso.
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { startServer, type RunningServer } from "../scripts/dev-server.js";
-import { reimpostaPassword, statoAccesso } from "../scripts/reimposta-password.js";
+import { codiciSuUnaRiga, reimpostaPassword, statoAccesso } from "../scripts/reimposta-password.js";
 import { makeClient, resetDb, sql } from "./helpers.js";
 
 const VECCHIA = "Vecchia-password-123!";
@@ -41,6 +41,14 @@ async function protetto(): Promise<void> {
 }
 
 describe("reimposta password", () => {
+  it("i codici per il Portachiavi stanno su una riga sola e si rileggono interi", () => {
+    const codici = ["em-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "em-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"];
+    const riga = codiciSuUnaRiga(codici);
+
+    expect(riga).not.toContain("\n");
+    expect(riga.split("; ")).toEqual(codici);
+  });
+
   it("la password nuova entra dal login, la vecchia viene rifiutata", async () => {
     await protetto();
 
