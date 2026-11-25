@@ -124,3 +124,5 @@ Scelte:
 **Verifica.** Secondo test in `tests/backup.test.ts` (file rinominato da `backup-contatti.test.ts`, ora copre entrambe le parti): semina una riga per ognuna delle tabelle nuove, scarica `/api/backup`, esegue `python3 manage.py restore` e riapre il `crm.sqlite3`: valori, booleani, `BIGINT` (`updated_at`, `at`), BLOB del logo e dell'allegato tornano identici, `credentials` del canale è vuoto e la stringa cifrata non compare nel dump. Suite completa 229 passati / 1 saltato su Postgres 17 temporaneo (porta 55445, poi spento e rimosso); `npx tsc --noEmit` → 0.
 
 `.github/workflows/verifica.yml` ha ora anche `workflow_dispatch`, così la CI si può lanciare a mano quando GitHub perde l'evento di un push (è successo con `cd70a8f`).
+
+`verifica.yml` usa ora `actions/checkout@v5` e `actions/setup-node@v5`: sparisce l'annotation di GitHub sul Node 20 deprecato. `sorveglianza.yml` è ancora su `@v4` (funziona: le action v4 girano su Node 24 forzato), quindi l'avviso resta in quel workflow finché non si aggiorna anche lì.
