@@ -298,4 +298,38 @@ describe("invio allo SdI", () => {
       await server.close();
     }
   });
+
+  it("registra quando è avvenuta l'ultima lettura e quante notifiche ha applicato", async () => {
+    await configuraPec();
+    await fatturaConXml();
+    expect((await stato()).last_lettura).toBeNull();
+
+    await aggiornaEsiti(
+      trasportoFinto([
+        { filename: "RC_00001.xml", xml: `<RicevutaConsegna><NomeFile>${FILE}</NomeFile></RicevutaConsegna>` },
+        { filename: "NS_99999.xml", xml: `<NotificaScarto><NomeFile>IT00000000000_99999.xml</NomeFile></NotificaScarto>` },
+      ]).transport,
+    );
+
+    const dopo = await stato();
+    expect(dopo.last_lettura).toMatchObject({ updated: 1, ignorate: 1, superate: 0, ok: true, error: "" });
+    expect(dopo.last_lettura?.at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+
+    // Una lettura successiva sostituisce i numeri, non li somma.
+    await aggiornaEsiti(trasportoFinto().transport);
+    expect((await stato()).last_lettura).toMatchObject({ updated: 0, ignorate: 0, superate: 0, ok: true });
+
+    // Un guasto della PEC viene scritto: il pannello deve poterlo mostrare
+    // invece di far credere che il cron non giri.
+    const guasto: SdiTransport = {
+      async send() {},
+      async notifications() {
+        throw new Error("IMAP irraggiungibile");
+      },
+    };
+    await expect(aggiornaEsiti(guasto)).rejects.toThrow(/IMAP irraggiungibile/);
+    const fallita = await stato();
+    expect(fallita.last_lettura).toMatchObject({ updated: 0, ok: false });
+    expect(fallita.last_lettura?.error).toContain("IMAP irraggiungibile");
+  });
 });

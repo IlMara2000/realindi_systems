@@ -54,12 +54,24 @@ export interface SdiConfig {
   from: string;
 }
 
+/** Esito dell'ultima lettura delle ricevute, come lo mostra il pannello. */
+export interface SdiLettura {
+  at: string;
+  updated: number;
+  ignorate: number;
+  superate: number;
+  ok: boolean;
+  error: string;
+}
+
 export interface SdiStatus {
   configured: boolean;
   key_configured: boolean;
   config: Omit<SdiConfig, never> | null;
   counts: Record<string, number>;
   missing: string[];
+  /** Null finché nessuna lettura è stata fatta (né dal cron né dal pulsante). */
+  last_lettura: SdiLettura | null;
 }
 
 export interface SdiTransport {
@@ -193,10 +205,11 @@ export async function salvaConfig(d: Record<string, unknown>): Promise<SdiStatus
 
 export async function stato(): Promise<SdiStatus> {
   const p = prisma();
-  const [cfg, password, impostazioni] = await Promise.all([
+  const [cfg, password, impostazioni, lettura] = await Promise.all([
     configPec(),
     passwordPec(),
     p.setting.findMany({ where: { key: { in: ["vat_number", "tax_regime", "address", "postcode", "city"] } } }),
+    p.sdiSync.findUnique({ where: { id: 1 } }),
   ]);
   const valori = new Map(impostazioni.map((r) => [r.key, r.value]));
   const keyConfigured = !!process.env.INTEGRATIONS_KEY;
@@ -219,6 +232,16 @@ export async function stato(): Promise<SdiStatus> {
       : null,
     counts,
     missing,
+    last_lettura: lettura
+      ? {
+          at: lettura.last_at,
+          updated: lettura.updated,
+          ignorate: lettura.ignorate,
+          superate: lettura.superate,
+          ok: lettura.ok,
+          error: lettura.error,
+        }
+      : null,
   };
 }
 
@@ -389,8 +412,45 @@ export function leggiNotifica(
   return { file, state, message: descrizioni || SDI_STATI[state] || state, at };
 }
 
-/** Rilegge le notifiche dalla PEC e aggiorna lo stato delle fatture. */
+/**
+ * Rilegge le notifiche dalla PEC e aggiorna lo stato delle fatture. L'esito
+ * della lettura viene sempre registrato, riuscita o no: senza, dal pannello
+ * non si distingue "il cron non gira" da "gira e non trova nulla".
+ */
 export async function aggiornaEsiti(
+  transport?: SdiTransport,
+): Promise<{ updated: number; ignorate: number; superate: number }> {
+  let esiti: { updated: number; ignorate: number; superate: number };
+  try {
+    esiti = await elaboraEsiti(transport);
+  } catch (err) {
+    // Se il guasto è il database, anche la registrazione fallisce: non c'è
+    // niente da salvare, e l'errore vero da mostrare è quello originale.
+    await registraLettura({ updated: 0, ignorate: 0, superate: 0, ok: false, error: erroreBreve(err) })
+      .catch(() => {});
+    throw err;
+  }
+  await registraLettura({ ...esiti, ok: true, error: "" });
+  return esiti;
+}
+
+/** L'esito della lettura nella riga unica `sdi_sync` (id 1). */
+async function registraLettura(d: {
+  updated: number;
+  ignorate: number;
+  superate: number;
+  ok: boolean;
+  error: string;
+}): Promise<void> {
+  const riga = { last_at: new Date().toISOString(), ...d };
+  await prisma().sdiSync.upsert({
+    where: { id: 1 },
+    create: { id: 1, ...riga },
+    update: riga,
+  });
+}
+
+async function elaboraEsiti(
   transport?: SdiTransport,
 ): Promise<{ updated: number; ignorate: number; superate: number }> {
   const t = transport ?? (await trasportoDaConfig());

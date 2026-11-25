@@ -172,3 +172,13 @@ Le ricevute non hanno più bisogno del pulsante: `POST /api/sdi/cron` rilegge la
 Il cron nativo di Vercel (`"crons"` in `vercel.json`) resta un'alternativa, ma su piano Hobby la frequenza minima è una volta al giorno: per questo il workflow GitHub. GitHub non è puntuale (10-20 minuti di ritardo con `*/30`), irrilevante per delle ricevute.
 
 **Verifica.** `tests/sdi.test.ts` avvia il server vero (`startServer`) e controlla la rotta: 401 senza header, con segreto diverso e con `Bearer` vuoto; 200 con `skipped` quando la PEC non è collegata; di nuovo 401 quando `CRON_SECRET` manca sul server. Il resto della suite copre che i POST autenticati non siano cambiati.
+
+## Ultima lettura delle ricevute visibile in Impostazioni (25 novembre 2026)
+
+Da fuori non si distingueva «il cron non gira» da «gira e non trova niente». La tabella `sdi_sync` (una riga sola, `id = 1`) registra ogni lettura: `last_at` (ISO), `updated`, `ignorate`, `superate`, `ok`, `error`. `aggiornaEsiti()` la riscrive sempre, anche quando la PEC risponde con un errore: `ok = false` e il motivo, così il pannello può dire *perché* l'ultima volta non è andata. Se il guasto è il database la registrazione stessa fallisce e resta l'errore originale, che è la cosa utile da mostrare. Trattandosi di stato dell'istanza, `sdi_sync` non entra nel backup.
+
+In Impostazioni → Invio allo SdI, sotto il riquadro delle cose che mancano, ora compare «Ultima lettura delle ricevute: 25 nov, 18:40 · 3 aggiornate, 1 senza fattura, 2 più vecchie di quelle registrate», oppure un avviso rosso con l'errore dell'ultima lettura, oppure «Nessuna lettura delle ricevute» se non è mai stata fatta (né dal cron né dal pulsante). L'ora è mostrata in `Europe/Rome` con `timeLabel`.
+
+**Verifica.** `tests/sdi.test.ts` controlla che `last_lettura` inizialmente sia vuota, che dopo una lettura riporti `updated 1 / ignorate 1 / superate 0` con `ok: true` e la data ISO, che una lettura successiva sostituisca i numeri invece di sommarli, e che un guasto IMAP finisca in `last_lettura` con `ok: false` e il messaggio dell'errore.
+
+Migrazione: `prisma/migrations/20261125200000_sdi_letture`.

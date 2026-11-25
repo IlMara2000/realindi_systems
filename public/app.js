@@ -2003,6 +2003,17 @@ function sdiPillClass(stato) {
   if (stato === "sent") return "sent";
   return "";
 }
+function sdiLastLettura(l) {
+  if (!l) {
+    return `<div class="callout"><strong>Nessuna lettura delle ricevute</strong><p>Il cron la esegue ogni 30 minuti; puoi provarla subito con «Aggiorna ricevute».</p></div>`;
+  }
+  const quando = esc(timeLabel(l.at));
+  if (!l.ok) {
+    return `<div class="callout"><strong>Ultima lettura non riuscita</strong> · ${quando}<p>${esc(l.error || "Errore sconosciuto.")}</p></div>`;
+  }
+  const conta = [`${l.updated} aggiornate`, `${l.ignorate} senza fattura`, `${l.superate} più vecchie di quelle registrate`].join(", ");
+  return `<p class="hint"><strong>Ultima lettura delle ricevute:</strong> ${quando} · ${esc(conta)}</p>`;
+}
 function sdiSettingsPanel(sd) {
   const c = (sd && sd.config) || {};
   const attivo = !!(sd && sd.configured);
@@ -2018,7 +2029,8 @@ function sdiSettingsPanel(sd) {
       <div class="form-actions"><button class="primary" type="submit">Salva PEC</button><button type="button" class="secondary" data-action="sdi-sync">Aggiorna ricevute</button></div>
     </form>
     ${sd && sd.missing && sd.missing.length ? `<div class="callout"><strong>Manca ancora</strong><ul>${sd.missing.map((m) => `<li>${esc(m)}</li>`).join("")}</ul></div>` : ""}
-    <p class="hint">La password non viene mai riletta dal server. Gli stati restando scritti sulla fattura: un invio fallito si può ritentare.</p>
+    ${sdiLastLettura(sd && sd.last_lettura)}
+    <p class="hint">La password non viene mai riletta dal server. Gli stati restano scritti sulla fattura: un invio fallito si può ritentare.</p>
   </div></section></div>`;
 }
 function viewInvoice(id) {

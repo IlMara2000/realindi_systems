@@ -119,6 +119,22 @@ model Invoice {
   @@map("invoices")
 }
 
+// Ultima lettura delle ricevute SdI: una riga sola (id 1), riscritta a ogni
+// lettura, riuscita o no. Il pannello Impostazioni → Invio allo SdI la mostra
+// per far vedere che il cron gira davvero e quanto ha applicato. Non finisce
+// nel backup: è stato dell'istanza, non un dato del CRM.
+model SdiSync {
+  id       Int     @id
+  last_at  String
+  updated  Int     @default(0)
+  ignorate Int     @default(0)
+  superate Int     @default(0)
+  ok       Boolean @default(true)
+  error    String  @default("")
+
+  @@map("sdi_sync")
+}
+
 model Document {
   id           Int      @id @default(autoincrement())
   client_id    Int
