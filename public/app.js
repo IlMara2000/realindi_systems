@@ -2012,7 +2012,7 @@ function sdiLastLettura(l) {
     return `<div class="callout"><strong>Ultima lettura non riuscita</strong> · ${quando}<p>${esc(l.error || "Errore sconosciuto.")}</p></div>`;
   }
   const conta = [`${l.updated} aggiornate`, `${l.ignorate} senza fattura`, `${l.superate} più vecchie di quelle registrate`].join(", ");
-  return `<p class="hint"><strong>Ultima lettura delle ricevute:</strong> ${quando} · ${esc(conta)}</p>`;
+  return `<p class="hint"><strong>Ultima lettura delle ricevute:</strong> ${quando} · ${esc(conta)} <span class="muted">(solo le notifiche nuove di quel giro)</span></p>`;
 }
 function sdiSettingsPanel(sd) {
   const c = (sd && sd.config) || {};

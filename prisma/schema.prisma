@@ -135,6 +135,19 @@ model SdiSync {
   @@map("sdi_sync")
 }
 
+// Notifiche SdI già conteggiate: la casella viene riletta intera ogni 30
+// minuti, quindi senza questa memoria «senza fattura» e «più vecchie di quelle
+// registrate» si ripeterebbero identici a ogni giro. `chiave` è l'impronta del
+// file di notifica, `vista_il` serve a potare le righe quando il messaggio esce
+// dalla finestra di lettura. Non finisce nel backup: stato dell'istanza.
+model SdiNotifica {
+  chiave   String @id
+  vista_il String
+
+  @@index([vista_il])
+  @@map("sdi_notifiche")
+}
+
 model Document {
   id           Int      @id @default(autoincrement())
   client_id    Int

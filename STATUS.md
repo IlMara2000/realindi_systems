@@ -182,3 +182,13 @@ In Impostazioni → Invio allo SdI, sotto il riquadro delle cose che mancano, or
 **Verifica.** `tests/sdi.test.ts` controlla che `last_lettura` inizialmente sia vuota, che dopo una lettura riporti `updated 1 / ignorate 1 / superate 0` con `ok: true` e la data ISO, che una lettura successiva sostituisca i numeri invece di sommarli, e che un guasto IMAP finisca in `last_lettura` con `ok: false` e il messaggio dell'errore.
 
 Migrazione: `prisma/migrations/20261125200000_sdi_letture`.
+
+## Conteggi delle sole notifiche nuove (25 novembre 2026)
+
+La casella viene riletta intera ogni 30 minuti (`{ from, since: oggi - 30 giorni }`), quindi le stesse notifiche tornavano a ogni giro e i due numeri che non dipendono da un cambiamento reale — «senza fattura» e «più vecchie di quelle registrate» — restavano identici per sempre, facendo sembrare fermo il cron.
+
+Ora `elaboraEsiti()` ricorda l'impronta SHA-256 del file di ogni notifica nella tabella `sdi_notifiche` (`chiave` = impronta, `vista_il` = ISO). Una notifica già vista **viene comunque applicata** (l'ordine di `piuRecente()` decide, così una fattura importata dopo può ancora ricevere la sua ricevuta), ma non entra più nei contatori: `ignorate` e `superate` sono le novità di quella lettura. Le righe con `vista_il` più vecchio della finestra di lettura si eliminano a ogni giro, quindi la tabella resta dell'ordine delle notifiche degli ultimi 30 giorni. `updated` non cambia: un aggiornamento è già di per sé un fatto nuovo.
+
+Nel pannello la riga lo dice esplicitamente: «… · 3 aggiornate, 1 senza fattura, 2 più vecchie di quelle registrate (solo le notifiche nuove di quel giro)».
+
+**Verifica.** Due letture delle stesse notifiche danno la seconda volta `0 / 0 / 0`; una notifica senza fattura conta una volta sola e non si ripete; lo scarto già visto dopo un reinvio viene scartato senza essere ricontato. Migrazione: `prisma/migrations/20261125203000_sdi_notifiche_viste` (tabella `sdi_notifiche`, esclusa dal backup come `sdi_sync`: è stato dell'istanza).

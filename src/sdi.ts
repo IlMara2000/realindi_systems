@@ -6,6 +6,7 @@
 // sulla stessa casella. Il codice destinatario è del destinatario, non
 // dell'emittente: non viene generato qui. L'XML resta immutabile, cambia solo
 // lo stato della fattura.
+import { createHash } from "node:crypto";
 import { ImapFlow } from "imapflow";
 import { createTransport } from "nodemailer";
 import { openSecret, sealSecret } from "./crypto.js";
@@ -416,6 +417,12 @@ export function leggiNotifica(
  * Rilegge le notifiche dalla PEC e aggiorna lo stato delle fatture. L'esito
  * della lettura viene sempre registrato, riuscita o no: senza, dal pannello
  * non si distingue "il cron non gira" da "gira e non trova nulla".
+ *
+ * I contatori riguardano solo le notifiche nuove di questo giro: la casella
+ * viene riletta intera, e senza memoria i messaggi già visti gonfierebbero
+ * «senza fattura» e «più vecchie» a ogni lettura. La memoria è `sdi_notifiche`
+ * (impronta del file); le righe escono quando il messaggio esce dalla finestra
+ * di lettura, quindi al massimo per `GIORNI_RICEVUTE` restano in tabella.
  */
 export async function aggiornaEsiti(
   transport?: SdiTransport,
@@ -450,27 +457,46 @@ async function registraLettura(d: {
   });
 }
 
+/** Impronta del file di notifica: identifica il messaggio fra una lettura e l'altra. */
+function improntaNotifica(xml: string): string {
+  return createHash("sha256").update(xml).digest("hex");
+}
+
 async function elaboraEsiti(
   transport?: SdiTransport,
 ): Promise<{ updated: number; ignorate: number; superate: number }> {
   const t = transport ?? (await trasportoDaConfig());
   const notifiche = await t.notifications();
+  const p = prisma();
+  const viste = new Set(
+    (await p.sdiNotifica.findMany({ select: { chiave: true } })).map((r) => r.chiave),
+  );
+  const nuove: string[] = [];
   let updated = 0;
   let ignorate = 0;
   let superate = 0;
   for (const notifica of notifiche) {
     const esito = leggiNotifica(notifica.xml, notifica.filename);
     if (!esito) continue;
-    const inv = await prisma().invoice.findFirst({ where: { xml_filename: esito.file } });
+    // Una notifica già letta viene comunque applicata (l'ordine delle date
+    // decide), ma non si conta di nuovo: i numeri del pannello sono le novità
+    // di questa lettura.
+    const chiave = improntaNotifica(notifica.xml);
+    const nuova = !viste.has(chiave);
+    if (nuova) {
+      viste.add(chiave);
+      nuove.push(chiave);
+    }
+    const inv = await p.invoice.findFirst({ where: { xml_filename: esito.file } });
     if (!inv) {
-      ignorate++;
+      if (nuova) ignorate++;
       continue;
     }
     if (!piuRecente({ state: inv.sdi_state, at: inv.sdi_event_at }, { state: esito.state, at: esito.at })) {
-      superate++;
+      if (nuova) superate++;
       continue;
     }
-    await prisma().invoice.update({
+    await p.invoice.update({
       where: { id: inv.id },
       data: {
         sdi_state: esito.state,
@@ -481,5 +507,16 @@ async function elaboraEsiti(
     });
     updated++;
   }
+  const ora = new Date().toISOString();
+  if (nuove.length) {
+    await p.sdiNotifica.createMany({
+      data: nuove.map((chiave) => ({ chiave, vista_il: ora })),
+      skipDuplicates: true,
+    });
+  }
+  // Le righe più vecchie della finestra di lettura non servono più: quei
+  // messaggi non vengono nemmeno scaricati dalla casella.
+  const limite = new Date(Date.now() - GIORNI_RICEVUTE * 24 * 60 * 60 * 1000).toISOString();
+  await p.sdiNotifica.deleteMany({ where: { vista_il: { lt: limite } } });
   return { updated, ignorate, superate };
 }

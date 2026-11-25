@@ -190,6 +190,13 @@ describe("invio allo SdI", () => {
     const dopo = await statoFattura(id);
     expect(dopo.sdi_state).toBe("delivered");
     expect(dopo.sdi_message).toBe("Consegnata");
+
+    // La casella si rilegge intera ogni 30 minuti: la notifica senza fattura
+    // torna a ogni giro ma non è una novità, quindi non si conta di nuovo.
+    expect(await aggiornaEsiti(trasportoFinto([
+      { filename: "RC_00001.xml", xml: `<RicevutaConsegna><NomeFile>${FILE}</NomeFile></RicevutaConsegna>` },
+      { filename: "NS_99999.xml", xml: "<NotificaScarto><NomeFile>IT00000000000_99999.xml</NomeFile></NotificaScarto>" },
+    ]).transport)).toEqual({ updated: 0, ignorate: 0, superate: 0 });
   });
 
   it("una notifica più vecchia non sovrascrive uno stato più recente", async () => {
@@ -210,9 +217,10 @@ describe("invio allo SdI", () => {
     expect(prima).toEqual({ updated: 1, ignorate: 0, superate: 1 });
     expect((await statoFattura(id)).sdi_state).toBe("accepted");
 
-    // Rileggere le stesse notifiche non cambia più nulla.
+    // Rileggere le stesse notifiche non cambia più nulla e non le riconta:
+    // «più vecchie» vale solo per le notifiche nuove di quel giro.
     const ripetuta = await aggiornaEsiti(trasportoFinto([consegna, esitoCliente]).transport);
-    expect(ripetuta).toEqual({ updated: 0, ignorate: 0, superate: 2 });
+    expect(ripetuta).toEqual({ updated: 0, ignorate: 0, superate: 0 });
     expect((await statoFattura(id)).sdi_state).toBe("accepted");
 
     // Una notifica davvero successiva passa.
@@ -261,9 +269,10 @@ describe("invio allo SdI", () => {
     await inviaFattura(id, trasportoFinto().transport);
     expect((await statoFattura(id)).sdi_state).toBe("sent");
 
-    // Lo scarto resta in casella e viene riletto, ma è più vecchio del reinvio.
+    // Lo scarto resta in casella e viene riletto, ma è più vecchio del reinvio
+    // ed è già stato visto: si scarta senza ricontarlo.
     const dopo = await aggiornaEsiti(trasportoFinto([scarto]).transport);
-    expect(dopo).toEqual({ updated: 0, ignorate: 0, superate: 1 });
+    expect(dopo).toEqual({ updated: 0, ignorate: 0, superate: 0 });
     expect((await statoFattura(id)).sdi_state).toBe("sent");
   });
 
@@ -315,8 +324,14 @@ describe("invio allo SdI", () => {
     expect(dopo.last_lettura).toMatchObject({ updated: 1, ignorate: 1, superate: 0, ok: true, error: "" });
     expect(dopo.last_lettura?.at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
 
-    // Una lettura successiva sostituisce i numeri, non li somma.
-    await aggiornaEsiti(trasportoFinto().transport);
+    // Una lettura successiva sostituisce i numeri, non li somma; rileggendo le
+    // stesse notifiche i contatori restano a zero perché non sono nuove.
+    await aggiornaEsiti(
+      trasportoFinto([
+        { filename: "RC_00001.xml", xml: `<RicevutaConsegna><NomeFile>${FILE}</NomeFile></RicevutaConsegna>` },
+        { filename: "NS_99999.xml", xml: `<NotificaScarto><NomeFile>IT00000000000_99999.xml</NomeFile></NotificaScarto>` },
+      ]).transport,
+    );
     expect((await stato()).last_lettura).toMatchObject({ updated: 0, ignorate: 0, superate: 0, ok: true });
 
     // Un guasto della PEC viene scritto: il pannello deve poterlo mostrare
