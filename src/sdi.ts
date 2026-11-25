@@ -26,6 +26,18 @@ export const SDI_STATI: Record<string, string> = {
   refused: "Rifiutata dal cliente",
 };
 
+// Avanzamento degli stati: si usa solo quando una notifica arriva senza data e
+// i tempi non possono decidere. Non si torna mai indietro.
+const RANGO: Record<string, number> = {
+  not_sent: 0,
+  sent: 1,
+  delivered: 2,
+  failed: 2,
+  rejected: 3,
+  accepted: 4,
+  refused: 4,
+};
+
 export interface SdiConfig {
   host: string;
   port: number;
@@ -63,6 +75,51 @@ function erroreBreve(err: unknown): string {
 
 function adesso(): string {
   return new Date().toISOString().slice(0, 19).replace("T", " ");
+}
+
+/** Scostamento di Roma da UTC nell'istante indicato, in millisecondi. */
+function scostamentoRoma(ms: number): number {
+  const locale = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Rome",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(new Date(ms));
+  const letto = Date.parse(locale.replace(", ", "T") + "Z");
+  return Number.isFinite(letto) ? letto - ms : 0;
+}
+
+/**
+ * Istante (ms) di una data, o null se non è una data. Le notifiche SdI
+ * scrivono l'ora italiana senza fuso orario; quelli che scriviamo noi (invio)
+ * sono ISO con la Z e vengono letti così come sono.
+ */
+export function istanteNotifica(valore: string | null | undefined): number | null {
+  const s = (valore ?? "").trim().replace(" ", "T");
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s)) return null;
+  const letto = Date.parse(s);
+  if (!Number.isFinite(letto)) return null;
+  return /(?:Z|[+-]\d{2}:?\d{2})$/.test(s) ? letto : letto - scostamentoRoma(letto);
+}
+
+/**
+ * Una notifica si applica solo se è più recente dello stato già registrato:
+ * la casella viene riletta intera a ogni lettura, quindi la vecchia ricevuta di
+ * consegna torna sempre e non deve riportare indietro una fattura già accettata.
+ * Senza date decide l'ordine degli stati.
+ */
+export function piuRecente(
+  attuale: { state: string; at: string | null },
+  nuova: { state: string; at: string | null },
+): boolean {
+  const a = istanteNotifica(attuale.at);
+  const n = istanteNotifica(nuova.at);
+  if (a !== null && n !== null && a !== n) return n > a;
+  return (RANGO[nuova.state] ?? 0) > (RANGO[attuale.state] ?? 0);
 }
 
 export function validaConfig(d: Record<string, unknown>): SdiConfig {
@@ -254,7 +311,12 @@ export async function inviaFattura(id: number, transport?: SdiTransport): Promis
     const motivo = erroreBreve(err);
     await p.invoice.update({
       where: { id },
-      data: { sdi_state: "failed", sdi_updated_at: adesso(), sdi_message: `Invio non riuscito: ${motivo}` },
+      data: {
+        sdi_state: "failed",
+        sdi_updated_at: adesso(),
+        sdi_event_at: new Date().toISOString(),
+        sdi_message: `Invio non riuscito: ${motivo}`,
+      },
     });
     throw new Invalid(`Invio allo SdI non riuscito: ${motivo}`);
   }
@@ -264,6 +326,9 @@ export async function inviaFattura(id: number, transport?: SdiTransport): Promis
       sdi_state: "sent",
       sdi_sent_at: adesso(),
       sdi_updated_at: adesso(),
+      // Ancora temporale del reinvio: le notifiche della trasmissione
+      // precedente restano in casella ma sono più vecchie di questo istante.
+      sdi_event_at: new Date().toISOString(),
       sdi_message: `Trasmessa a ${SDI_PEC}`,
     },
   });
@@ -284,7 +349,10 @@ export async function invioAutomatico(id: number): Promise<string> {
 }
 
 /** Interpreta una notifica SdI: dice a quale file si riferisce e che esito è. */
-export function leggiNotifica(xml: string, filename = ""): { file: string; state: string; message: string } | null {
+export function leggiNotifica(
+  xml: string,
+  filename = "",
+): { file: string; state: string; message: string; at: string | null } | null {
   const nome = /<NomeFile>([^<]+)<\/NomeFile>/.exec(xml)?.[1]?.trim();
   const file = nome || (/\.xml$/i.test(filename) ? filename : "");
   if (!file) return null;
@@ -300,15 +368,22 @@ export function leggiNotifica(xml: string, filename = ""): { file: string; state
     .filter(Boolean)
     .slice(0, 3)
     .join(" · ");
-  return { file, state, message: descrizioni || SDI_STATI[state] || state };
+  // Data dell'evento secondo lo SdI: vale per ordinare le notifiche fra loro.
+  const at = /<DataOraConsegna>([^<]+)<\/DataOraConsegna>/.exec(xml)?.[1]?.trim()
+    ?? /<DataOra>([^<]+)<\/DataOra>/.exec(xml)?.[1]?.trim()
+    ?? null;
+  return { file, state, message: descrizioni || SDI_STATI[state] || state, at };
 }
 
 /** Rilegge le notifiche dalla PEC e aggiorna lo stato delle fatture. */
-export async function aggiornaEsiti(transport?: SdiTransport): Promise<{ updated: number; ignorate: number }> {
+export async function aggiornaEsiti(
+  transport?: SdiTransport,
+): Promise<{ updated: number; ignorate: number; superate: number }> {
   const t = transport ?? (await trasportoDaConfig());
   const notifiche = await t.notifications();
   let updated = 0;
   let ignorate = 0;
+  let superate = 0;
   for (const notifica of notifiche) {
     const esito = leggiNotifica(notifica.xml, notifica.filename);
     if (!esito) continue;
@@ -317,11 +392,20 @@ export async function aggiornaEsiti(transport?: SdiTransport): Promise<{ updated
       ignorate++;
       continue;
     }
+    if (!piuRecente({ state: inv.sdi_state, at: inv.sdi_event_at }, { state: esito.state, at: esito.at })) {
+      superate++;
+      continue;
+    }
     await prisma().invoice.update({
       where: { id: inv.id },
-      data: { sdi_state: esito.state, sdi_updated_at: adesso(), sdi_message: esito.message },
+      data: {
+        sdi_state: esito.state,
+        sdi_updated_at: adesso(),
+        sdi_event_at: esito.at ?? inv.sdi_event_at,
+        sdi_message: esito.message,
+      },
     });
     updated++;
   }
-  return { updated, ignorate };
+  return { updated, ignorate, superate };
 }

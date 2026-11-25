@@ -185,9 +185,84 @@ describe("invio allo SdI", () => {
 
     const esito = await aggiornaEsiti(transport);
 
-    expect(esito).toEqual({ updated: 1, ignorate: 1 });
+    expect(esito).toEqual({ updated: 1, ignorate: 1, superate: 0 });
     const dopo = await statoFattura(id);
     expect(dopo.sdi_state).toBe("delivered");
     expect(dopo.sdi_message).toBe("Consegnata");
+  });
+
+  it("una notifica più vecchia non sovrascrive uno stato più recente", async () => {
+    await configuraPec();
+    const id = await fatturaConXml();
+    const consegna = {
+      filename: "RC_00001.xml",
+      xml: `<RicevutaConsegna><NomeFile>${FILE}</NomeFile><DataOraConsegna>2026-11-25 10:00:00</DataOraConsegna></RicevutaConsegna>`,
+    };
+    const esitoCliente = {
+      filename: "NE_00001.xml",
+      xml: `<NotificaEsito><NomeFile>${FILE}</NomeFile><Esito>EC01</Esito><DataOra>2026-11-25 12:00:00</DataOra></NotificaEsito>`,
+    };
+
+    // La casella viene riletta intera: la vecchia ricevuta torna a ogni lettura
+    // e arriva dopo l'esito del cliente.
+    const prima = await aggiornaEsiti(trasportoFinto([esitoCliente, consegna]).transport);
+    expect(prima).toEqual({ updated: 1, ignorate: 0, superate: 1 });
+    expect((await statoFattura(id)).sdi_state).toBe("accepted");
+
+    // Rileggere le stesse notifiche non cambia più nulla.
+    const ripetuta = await aggiornaEsiti(trasportoFinto([consegna, esitoCliente]).transport);
+    expect(ripetuta).toEqual({ updated: 0, ignorate: 0, superate: 2 });
+    expect((await statoFattura(id)).sdi_state).toBe("accepted");
+
+    // Una notifica davvero successiva passa.
+    const rifiuto = {
+      filename: "NE_00002.xml",
+      xml: `<NotificaEsito><NomeFile>${FILE}</NomeFile><Esito>EC02</Esito><DataOra>2026-11-25 13:00:00</DataOra></NotificaEsito>`,
+    };
+    expect(await aggiornaEsiti(trasportoFinto([rifiuto]).transport)).toEqual({
+      updated: 1,
+      ignorate: 0,
+      superate: 0,
+    });
+    expect((await statoFattura(id)).sdi_state).toBe("refused");
+  });
+
+  it("senza data nelle notifiche vale l'ordine degli stati", async () => {
+    await configuraPec();
+    const id = await fatturaConXml();
+
+    await aggiornaEsiti(
+      trasportoFinto([{ filename: "NE.xml", xml: `<NotificaEsito><NomeFile>${FILE}</NomeFile><Esito>EC01</Esito></NotificaEsito>` }])
+        .transport,
+    );
+    expect((await statoFattura(id)).sdi_state).toBe("accepted");
+
+    // Una ricevuta di consegna senza data non riporta indietro la fattura.
+    const tardiva = await aggiornaEsiti(
+      trasportoFinto([{ filename: "RC.xml", xml: `<RicevutaConsegna><NomeFile>${FILE}</NomeFile></RicevutaConsegna>` }])
+        .transport,
+    );
+    expect(tardiva).toEqual({ updated: 0, ignorate: 0, superate: 1 });
+    expect((await statoFattura(id)).sdi_state).toBe("accepted");
+  });
+
+  it("dopo un reinvio la vecchia notifica di scarto non riporta indietro la fattura", async () => {
+    await configuraPec();
+    const id = await fatturaConXml();
+    const scarto = {
+      filename: "NS_00001.xml",
+      xml: `<NotificaScarto><NomeFile>${FILE}</NomeFile><DataOra>2026-11-20 09:00:00</DataOra></NotificaScarto>`,
+    };
+    await aggiornaEsiti(trasportoFinto([scarto]).transport);
+    expect((await statoFattura(id)).sdi_state).toBe("rejected");
+
+    // Corretta la fattura, si reinvia: parte da un istante più recente.
+    await inviaFattura(id, trasportoFinto().transport);
+    expect((await statoFattura(id)).sdi_state).toBe("sent");
+
+    // Lo scarto resta in casella e viene riletto, ma è più vecchio del reinvio.
+    const dopo = await aggiornaEsiti(trasportoFinto([scarto]).transport);
+    expect(dopo).toEqual({ updated: 0, ignorate: 0, superate: 1 });
+    expect((await statoFattura(id)).sdi_state).toBe("sent");
   });
 });

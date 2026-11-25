@@ -138,6 +138,18 @@ Cosa succede dopo:
 - lo stato per fattura è `not_sent → sent → delivered | rejected | failed | accepted | refused`, con data di invio e ultimo esito; `POST /api/sdi/esiti` (o «Aggiorna ricevute SdI») rilegge la posta e applica `RicevutaConsegna`, `NotificaScarto`, `NotificaMancataConsegna`, `NotificaEsito` (EC01/EC02) e `NotificaDecorrenzaTermini`, riconoscendo la fattura dal `<NomeFile>`;
 - gli XML restano immutabili; le ricevute non li toccano.
 
-**Verifica.** `tests/sdi.test.ts` (8 test) su Postgres 17 temporaneo: notifiche riconosciute, PEC salvata senza restituire la password, elenco di ciò che manca, invio con trasporto simulato (destinatario `sdi01@pec.fatturapa.it`, file e contenuto corretti, stato `sent`), errore di autenticazione registrato e ritentabile, rifiuto senza XML e senza PEC, nessun invio automatico senza PEC, ricevute applicate e notifica di un'altra fattura ignorata. Suite completa 237 passati / 1 saltato (porta 55447, poi spenta e rimossa); `npx tsc --noEmit` → 0.
+**Verifica.** `tests/sdi.test.ts` su Postgres 17 temporaneo: notifiche riconosciute, PEC salvata senza restituire la password, elenco di ciò che manca, invio con trasporto simulato (destinatario `sdi01@pec.fatturapa.it`, file e contenuto corretti, stato `sent`), errore di autenticazione registrato e ritentabile, rifiuto senza XML e senza PEC, nessun invio automatico senza PEC, ricevute applicate e notifica di un'altra fattura ignorata. Suite completa 240 passati / 1 saltato (porta 55448, poi spenta e rimossa); `npx tsc --noEmit` → 0.
 
 **Limiti dichiarati:** l'invio reale non è stato provato (serve la PEC dell'azienda); la conservazione a norma resta da collegare; le notifiche vengono lette su richiesta, non da un cron.
+
+## Ordine delle notifiche SdI (25 novembre 2026)
+
+La casella PEC viene riletta intera a ogni «Aggiorna ricevute»: la vecchia `RicevutaConsegna` tornava quindi a ogni lettura e poteva riportare `accepted` a `delivered`, o addirittura far tornare `rejected` una fattura già reinviata. Lo stesso poteva succedere dentro una sola lettura, perché l'ordine dei messaggi non è garantito.
+
+Ogni fattura ha ora `sdi_event_at`: l'istante dell'evento che ha prodotto lo stato attuale, cioè la `<DataOraConsegna>`/`<DataOra>` della notifica oppure, dopo un invio, l'istante ISO dell'invio stesso. `piuRecente()` in `src/sdi.ts` accetta una notifica solo se è successiva a quell'istante; senza date (alcune notifiche non ne hanno) decide l'ordine degli stati `not_sent < sent < delivered | failed < rejected < accepted | refused`, così non si torna mai indietro. Le notifiche scartate per questo motivo non toccano la riga e vengono contate a parte (`superate`): il messaggio a schermo le distingue da quelle «senza fattura».
+
+L'ancora dell'invio è ciò che risolve il reinvio: dopo uno scarto, «Invia allo SdI» registra il nuovo istante, e la vecchia `NotificaScarto` che resta in casella risulta precedente. Le date SdI arrivano in ora italiana senza fuso orario e vengono convertite con lo scostamento di `Europe/Rome` (ora legale compresa); quelle scritte da noi sono ISO con la `Z`.
+
+**Verifica.** `tests/sdi.test.ts` copre tre casi nuovi: notifica più vecchia applicata dopo una più recente (aggiorna una volta, poi nessun'altra modifica), notifiche senza data che non fanno regredire lo stato, scarto riletto dopo il reinvio che non riporta la fattura a `rejected`.
+
+Migrazione: `prisma/migrations/20261125193000_sdi_ordine_notifiche` (colonna `invoices.sdi_event_at`). Le fatture esistenti partono con il campo vuoto: la prima notifica che arriva viene applicata e da lì in poi vale l'ordine.

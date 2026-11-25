@@ -110,6 +110,9 @@ model Invoice {
   sdi_state      String  @default("not_sent")
   sdi_sent_at    String?
   sdi_updated_at String?
+  // Istante dell'evento che ha prodotto lo stato: la data della notifica SdI
+  // oppure l'istante dell'invio. Serve a non applicare notifiche più vecchie.
+  sdi_event_at   String?
   sdi_message    String  @default("")
   quote        Quote?   @relation(fields: [quote_id], references: [id])
   project      Project  @relation(fields: [project_id], references: [id])

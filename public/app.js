@@ -2523,7 +2523,10 @@ document.addEventListener("click", async (e) => {
     if (a === "sdi-sync") {
       const esito = await api("/api/sdi/esiti", {});
       await refresh();
-      toast(`Ricevute lette: ${esito.updated} aggiornate, ${esito.ignorate} senza fattura.`);
+      toast(
+        `Ricevute lette: ${esito.updated} aggiornate, ${esito.ignorate} senza fattura, ` +
+          `${esito.superate || 0} più vecchie di quelle già registrate.`,
+      );
       return;
     }
     if (a === "fiscal-settings") {
