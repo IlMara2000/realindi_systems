@@ -2032,7 +2032,7 @@ function sdiSenzaRicevuta(s) {
   const fatture = (s && s.fatture) || [];
   if (!fatture.length) return "";
   const righe = fatture
-    .map((f) => `<li><strong>${esc(f.number)}</strong> · inviata ${esc(timeLabel(f.at))}</li>`)
+    .map((f) => `<li><button type="button" class="link-button" data-action="view-invoice" data-id="${esc(f.id)}">${esc(f.number)}</button> · inviata ${esc(timeLabel(f.at))}</li>`)
     .join("");
   const quante =
     fatture.length === 1
@@ -2063,6 +2063,10 @@ function sdiSettingsPanel(sd) {
 }
 function viewInvoice(id) {
   const i = state.invoices.find((x) => x.id === Number(id));
+  if (!i) {
+    toast("Fattura non trovata: aggiorna la pagina e riprova.");
+    return;
+  }
   const sd = i.sdi_state || "not_sent";
   showModal(
     "Fattura " + (i.number || "in bozza"),
