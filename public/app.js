@@ -123,6 +123,7 @@ const labels = {
   notes: "Note",
   messages: "Messaggi",
   channels: "Canali",
+  tools: "Strumenti",
   security: "Sicurezza",
   discovery: "In definizione",
   active: "In corso",
@@ -153,6 +154,8 @@ const paths = {
   messages:
     "M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7A8.5 8.5 0 0 1 4 11.5 8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5z",
   channels: "M9 2v6 M15 2v6 M6 8h12v4a6 6 0 0 1-12 0z M12 18v4",
+  tools:
+    "M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1 M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1 M3 3h6v6H3z M15 15h6v6h-6z",
   security: "M5 11h14v10H5z M8 11V7a4 4 0 0 1 8 0v4 M12 15v2",
   settings:
     "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8 M12 2v3 M12 19v3 M2 12h3 M19 12h3 M5 5l2 2 M17 17l2 2 M5 19l2-2 M17 7l2-2",
@@ -444,7 +447,7 @@ function render() {
     if (location.hash) history.replaceState(null, "", "#dashboard");
   }
   $("#root").innerHTML =
-    `<div class="shell"><div class="drawer-scrim" data-action="menu-close" aria-hidden="true"></div><button type="button" class="drawer-tab" data-action="menu-open" aria-controls="crm-menu" aria-expanded="false" aria-label="Apri il menu"><span aria-hidden="true">‹</span></button><aside class="sidebar" id="crm-menu"><button type="button" class="drawer-close" data-action="menu-close" aria-label="Chiudi il menu">×</button><a class="brand" href="#dashboard"><img class="brand-mark" src="/assets/logo-realindi.png" alt="" width="32" height="32"> REALINDI</a><div class="brand-sub">FREELANCER WORKSPACE</div><div class="nav-label">WORKSPACE</div><nav class="nav" aria-label="Menu principale">${["dashboard", "messages", "clients", "projects", "quotes", "invoices", "ricevute", "documents", "calendar", "planner", "notes", "channels", "security"].map((k) => k === "ricevute" ? `<a href="/ricevute">${icon("invoices")}Ricevute</a>` : `<a href="#${k}" class="${route === k ? "active" : ""}" ${route === k ? 'aria-current="page"' : ""}>${icon(k)}${labels[k]}</a>`).join("")}</nav><div class="sidebar-bottom"><div class="nav-label">IL TUO BUSINESS, IN ORDINE.</div><div class="account"><span class="avatar">${esc((state.settings.owner_name || "RS").slice(0, 2).toUpperCase())}</span><div>${esc(state.settings.owner_name || "Il tuo workspace")}<small>Consulente indipendente</small></div></div></div></aside><main class="main"><header class="topbar"><div class="topbar-head"><a class="back-site" href="/">Torna al sito</a><div class="crumb">Workspace <span>/ &nbsp; ${labels[route]}</span></div></div><div class="top-right"><button type="button" class="agent-launch" data-action="agent-open" aria-controls="buffy-panel" aria-expanded="false"><span class="agent-launch-mark" aria-hidden="true">B</span><span class="agent-launch-label">Buffy</span></button><span class="local-status"><i class="status-dot"></i>Archivio locale</span>${btn("Esci", "logout", "", "secondary small")}<button type="button" class="theme-toggle" id="theme-toggle" aria-label="Cambia tema" aria-pressed="${document.documentElement.classList.contains("dark-mode")}"><svg class="theme-icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg><svg class="theme-icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button><button type="button" class="nav-toggle" data-action="menu-toggle" aria-controls="crm-menu" aria-expanded="false" aria-label="Apri il menu"><span class="nav-toggle-bars" aria-hidden="true"></span></button></div></header><div class="content" id="content"></div></main></div>`;
+    `<div class="shell"><div class="drawer-scrim" data-action="menu-close" aria-hidden="true"></div><button type="button" class="drawer-tab" data-action="menu-open" aria-controls="crm-menu" aria-expanded="false" aria-label="Apri il menu"><span aria-hidden="true">‹</span></button><aside class="sidebar" id="crm-menu"><button type="button" class="drawer-close" data-action="menu-close" aria-label="Chiudi il menu">×</button><a class="brand" href="#dashboard"><img class="brand-mark" src="/assets/logo-realindi.png" alt="" width="32" height="32"> REALINDI</a><div class="brand-sub">FREELANCER WORKSPACE</div><div class="nav-label">WORKSPACE</div><nav class="nav" aria-label="Menu principale">${["dashboard", "messages", "clients", "projects", "quotes", "invoices", "ricevute", "documents", "calendar", "planner", "notes", "tools", "channels", "security"].map((k) => k === "ricevute" ? `<a href="/ricevute">${icon("invoices")}Ricevute</a>` : `<a href="#${k}" class="${route === k ? "active" : ""}" ${route === k ? 'aria-current="page"' : ""}>${icon(k)}${labels[k]}</a>`).join("")}</nav><div class="sidebar-bottom"><div class="nav-label">IL TUO BUSINESS, IN ORDINE.</div><div class="account"><span class="avatar">${esc((state.settings.owner_name || "RS").slice(0, 2).toUpperCase())}</span><div>${esc(state.settings.owner_name || "Il tuo workspace")}<small>Consulente indipendente</small></div></div></div></aside><main class="main"><header class="topbar"><div class="topbar-head"><a class="back-site" href="/">Torna al sito</a><div class="crumb">Workspace <span>/ &nbsp; ${labels[route]}</span></div></div><div class="top-right"><button type="button" class="agent-launch" data-action="agent-open" aria-controls="buffy-panel" aria-expanded="false"><span class="agent-launch-mark" aria-hidden="true">B</span><span class="agent-launch-label">Buffy</span></button><span class="local-status"><i class="status-dot"></i>Archivio locale</span>${btn("Esci", "logout", "", "secondary small")}<button type="button" class="theme-toggle" id="theme-toggle" aria-label="Cambia tema" aria-pressed="${document.documentElement.classList.contains("dark-mode")}"><svg class="theme-icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg><svg class="theme-icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button><button type="button" class="nav-toggle" data-action="menu-toggle" aria-controls="crm-menu" aria-expanded="false" aria-label="Apri il menu"><span class="nav-toggle-bars" aria-hidden="true"></span></button></div></header><div class="content" id="content"></div></main></div>`;
   renderContent();
   if (pendingToast) {
     const t = pendingToast;
@@ -463,6 +466,7 @@ function renderContent() {
     calendar,
     planner,
     notes,
+    tools: toolsView,
     messages: messagesView,
     channels: channelsView,
     security: securityView,
@@ -1367,10 +1371,279 @@ function channelsView() {
     `<div class="section-gap provider-grid">${providers.map(channelCard).join("")}</div>`
   );
 }
+/* Strumenti: QR personalizzati (con foto al centro) e link brevi. */
+const shortUrl = (slug) => `${location.origin}/l/${slug}`;
+function toolsView() {
+  const tools = state.tools || { links: [], qr: [] };
+  return (
+    title(
+      "QR e link, pronti da condividere.",
+      "Codici con qualsiasi contenuto interno e la tua foto al centro, più indirizzi brevi con il conteggio dei clic.",
+      btn("+ Nuovo QR", "new-qr", "", "primary") + btn("+ Nuovo link", "new-link"),
+    ) +
+    `<div class="grid-two">${panel(
+      "Link brevi",
+      tools.links.length
+        ? `<div>${tools.links.map(shortLinkRow).join("")}</div>`
+        : empty(
+            "tools",
+            "Nessun link breve",
+            "Accorcia un indirizzo e condividilo: ogni clic viene contato.",
+          ),
+    )}${panel(
+      "QR personalizzati",
+      tools.qr.length
+        ? `<div class="panel-body"><div class="note-grid qr-grid">${tools.qr.map(qrCard).join("")}</div></div>`
+        : empty(
+            "tools",
+            "Nessun QR salvato",
+            "Crea un codice con un testo, un contatto o un link, e la tua foto al centro.",
+          ),
+    )}</div>` +
+    `<p class="hint">I link brevi rispondono su questo indirizzo: ${esc(location.origin)}/l/… — chi apre il link viene reindirizzato alla destinazione.</p>`
+  );
+}
+function shortLinkRow(l) {
+  return `<div class="list-row"><div class="list-info"><strong>${esc(l.label || l.target)}</strong><small>${esc(shortUrl(l.slug))} · ${l.clicks} clic${l.active ? "" : " · disattivato"}</small><small>${esc(l.target)}</small></div><div class="actions">${btn("Copia", "copy-link", l.id)}${btn("QR", "link-qr", l.id)}${btn("Modifica", "edit-link", l.id)}${btn("Elimina", "delete-link", l.id, "secondary small danger")}</div></div>`;
+}
+function qrCard(item) {
+  return `<article class="note-card qr-card"><canvas class="qr-canvas" data-qr-thumb="${item.id}" width="256" height="256" role="img" aria-label="Anteprima del QR ${esc(item.title)}"></canvas><div class="note-head"><h3>${esc(item.title)}</h3>${item.has_logo ? '<span class="pill confirmed">Foto</span>' : ""}</div><p>${esc(excerpt(item.payload, 90))}</p><p class="hint">${esc(item.foreground)} · ${esc(item.background)} · correzione ${esc(item.ecc)}</p><div class="actions note-actions">${btn("Apri", "edit-qr", item.id)}${btn("Elimina", "delete-qr", item.id, "secondary small danger")}</div></article>`;
+}
+// La matrice arriva dal server (una stringa di 0/1 per riga) e il disegno
+// avviene qui: colori, foto al centro e PNG ad alta risoluzione senza servizi
+// esterni. Le matrici identiche si riusano mentre si cambiano i colori.
+const qrCache = new Map();
+async function qrMatrixFor(payload, ecc) {
+  const key = `${ecc}\n${payload}`;
+  if (qrCache.has(key)) return qrCache.get(key);
+  const data = await api("/api/tools/qr/render", { payload, ecc });
+  if (qrCache.size > 40) qrCache.clear();
+  qrCache.set(key, data);
+  return data;
+}
+function imageFromSrc(src) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+function dataUrlFromFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Impossibile leggere l'immagine."));
+    reader.readAsDataURL(file);
+  });
+}
+async function paintQr(canvas, opts) {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return "";
+  const quiet = 4;
+  const payload = String(opts.payload || "").trim();
+  let matrix = null;
+  let error = "";
+  if (!payload) {
+    error = "Scrivi il contenuto per vedere l'anteprima.";
+  } else {
+    try {
+      matrix = await qrMatrixFor(payload, opts.ecc || "H");
+    } catch (err) {
+      error = err.message;
+    }
+  }
+  if (!matrix) {
+    // Quadro vuoto invece di un codice vecchio rimasto a schermo.
+    canvas.width = canvas.height = 256;
+    ctx.clearRect(0, 0, 256, 256);
+    return error;
+  }
+  const modules = matrix.size + quiet * 2;
+  const scale = Math.max(1, Math.floor((opts.pixels || 320) / modules));
+  const side = modules * scale;
+  canvas.width = canvas.height = side;
+  ctx.fillStyle = opts.background || "#ffffff";
+  ctx.fillRect(0, 0, side, side);
+  ctx.fillStyle = opts.foreground || "#111111";
+  matrix.rows.forEach((row, y) => {
+    for (let x = 0; x < row.length; x++) {
+      if (row[x] === "1") ctx.fillRect((x + quiet) * scale, (y + quiet) * scale, scale, scale);
+    }
+  });
+  if (opts.logo && opts.logo.width && opts.logo.height) {
+    const box = Math.round(side * 0.24);
+    const pad = Math.round(box * 0.1);
+    const left = Math.round((side - box) / 2);
+    ctx.fillStyle = opts.background || "#ffffff";
+    ctx.fillRect(left - pad, left - pad, box + pad * 2, box + pad * 2);
+    const ratio = Math.min(box / opts.logo.width, box / opts.logo.height);
+    const w = opts.logo.width * ratio;
+    const h = opts.logo.height * ratio;
+    ctx.drawImage(opts.logo, left + (box - w) / 2, left + (box - h) / 2, w, h);
+  }
+  return "";
+}
+function qrFormValues() {
+  const f = $("#modal form");
+  if (!f) return null;
+  const value = (name) => f.querySelector(`[name="${name}"]`)?.value ?? "";
+  return {
+    id: value("id") ? Number(value("id")) : null,
+    title: value("title"),
+    payload: value("payload"),
+    foreground: value("foreground") || "#111111",
+    background: value("background") || "#ffffff",
+    ecc: value("ecc") || "H",
+    file: f.logo_file?.files?.[0] || null,
+    removeLogo: Boolean(f.remove_logo?.checked),
+  };
+}
+async function qrLogoImage(values) {
+  if (!values || values.removeLogo) return null;
+  if (values.file) return imageFromSrc(await dataUrlFromFile(values.file));
+  const item = values.id ? (state.tools?.qr || []).find((x) => x.id === values.id) : null;
+  return item?.has_logo ? imageFromSrc(`/api/tools/qr/${item.id}/logo`) : null;
+}
+function qrPreview() {
+  const canvas = $("#qr-preview-canvas");
+  if (!canvas) return;
+  clearTimeout(qrPreview.timer);
+  // Le anteprime possono sovrapporsi mentre si scrive: conta solo l'ultima.
+  const token = (qrPreview.token = (qrPreview.token || 0) + 1);
+  qrPreview.timer = setTimeout(async () => {
+    const values = qrFormValues();
+    if (!values) return;
+    const logo = await qrLogoImage(values);
+    const error = await paintQr(canvas, { ...values, logo, pixels: 512 });
+    const hint = $("#qr-hint");
+    if (!hint || token !== qrPreview.token) return;
+    hint.textContent =
+      error ||
+      (logo
+        ? "Foto al centro attiva: con la correzione alta il codice resta leggibile."
+        : "Il PNG scaricato conserva colori e foto.");
+  }, 250);
+}
+async function downloadQr() {
+  const values = qrFormValues();
+  if (!values) return;
+  if (!values.payload.trim()) return toast("Scrivi il contenuto del QR.");
+  const canvas = document.createElement("canvas");
+  const logo = await qrLogoImage(values);
+  const error = await paintQr(canvas, { ...values, logo, pixels: 1024 });
+  if (error) return toast(error);
+  const name =
+    (values.title || "qr")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "qr";
+  const link = document.createElement("a");
+  link.href = canvas.toDataURL("image/png");
+  link.download = `${name}.png`;
+  link.click();
+  toast("QR scaricato in PNG.");
+}
+function linkModal(id) {
+  const l = id ? (state.tools?.links || []).find((x) => x.id === Number(id)) : null;
+  showModal(
+    l ? "Modifica link breve" : "Nuovo link breve",
+    `<form class="form-grid">${field("Etichetta", "label", "text", l?.label || "", 'maxlength="120" placeholder="Listino, portfolio…"')}${field("Destinazione", "target", "text", l?.target || "", 'required maxlength="2000" placeholder="https://esempio.it/pagina"')}${field("Slug (facoltativo)", "slug", "text", l?.slug || "", 'maxlength="40" placeholder="generato in automatico"')}<div class="field full check-row"><label><input type="checkbox" name="active" ${l && !l.active ? "" : "checked"}>Link attivo</label></div><p class="hint">La destinazione può essere un indirizzo https:// o un percorso interno (/…). Lo slug usa lettere minuscole, numeri e trattini.</p>${formBottom(l ? "Salva link" : "Crea link")}</form>`,
+    async (d) => {
+      await api("/api/tools/links", { ...d, id: l?.id, active: Boolean(d.active) });
+      await saved(l ? "Link aggiornato." : "Link creato.");
+    },
+  );
+}
+function qrModal(id, preset) {
+  const item = id ? (state.tools?.qr || []).find((x) => x.id === Number(id)) : null;
+  const clientOptions = state.clients.length
+    ? [...state.clients]
+        .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+        .map((c) => `<option value="${c.id}">${esc(c.name + (c.company ? " · " + c.company : ""))}</option>`)
+        .join("")
+    : '<option value="">Nessun cliente</option>';
+  const projectOptions = state.projects.length
+    ? [...state.projects]
+        .sort((a, b) => String(a.title).localeCompare(String(b.title)))
+        .map((p) => `<option value="${p.id}">${esc(p.title)}</option>`)
+        .join("")
+    : '<option value="">Nessun progetto</option>';
+  showModal(
+    item ? "Modifica QR" : "Nuovo QR personalizzato",
+    `<form class="form-grid">${item ? `<input type="hidden" name="id" value="${item.id}">` : ""}${field("Nome del QR", "title", "text", item?.title ?? preset?.title ?? "", 'required maxlength="120" placeholder="Scheda cliente, listino…"')}${area("Contenuto del QR", "payload", item?.payload ?? preset?.payload ?? "")}<div class="field full"><label>Dati dal gestionale</label><div class="actions"><select id="f-qr-client" aria-label="Cliente">${clientOptions}</select>${btn("Usa cliente", "qr-fill-client")}<select id="f-qr-project" aria-label="Progetto">${projectOptions}</select>${btn("Usa progetto", "qr-fill-project")}</div><p class="hint">Il contatto entra come vCard, il progetto come riepilogo. Il testo resta modificabile.</p></div>${field("Colore del codice", "foreground", "color", item?.foreground || "#111111")}${field("Sfondo", "background", "color", item?.background || "#ffffff")}${select("Correzione errori", "ecc", [["H", "Alta (consigliata con foto)"], ["Q", "Media"], ["M", "Bassa"], ["L", "Minima"]], item?.ecc || "H")}<div class="field full"><label for="f-qr-logo">Foto al centro (PNG, JPG o WebP, max 300 KB)</label><input id="f-qr-logo" name="logo_file" type="file" accept="image/png,image/jpeg,image/webp"></div>${item?.has_logo ? '<div class="field full check-row"><label><input type="checkbox" name="remove_logo">Rimuovi la foto attuale</label></div>' : ""}<div class="field full"><div class="qr-layout"><canvas class="qr-canvas" id="qr-preview-canvas" width="512" height="512" role="img" aria-label="Anteprima del QR"></canvas><div><p class="hint" id="qr-hint"></p><button type="button" class="secondary" data-action="qr-download">Scarica PNG</button></div></div></div>${formBottom(item ? "Salva QR" : "Crea QR")}</form>`,
+    async (d, form) => {
+      const file = form.logo_file?.files?.[0] || null;
+      let logoData;
+      if (file) {
+        if (file.size > 300 * 1024) throw new Error("La foto è troppo grande: massimo 300 KB.");
+        logoData = await dataUrlFromFile(file);
+      }
+      await api("/api/tools/qr", {
+        ...d,
+        id: item?.id,
+        logo_data: logoData,
+        remove_logo: form.remove_logo?.checked === true,
+      });
+      await saved(item ? "QR aggiornato." : "QR creato.");
+    },
+  );
+  const form = $("#modal form");
+  if (form) {
+    form.oninput = qrPreview;
+    if (form.logo_file) form.logo_file.onchange = qrPreview;
+  }
+  qrPreview();
+}
+function clientVcard(c) {
+  const lines = ["BEGIN:VCARD", "VERSION:3.0", `FN:${c.name}`];
+  if (c.company) lines.push(`ORG:${c.company}`);
+  if (c.phone) lines.push(`TEL:${c.phone}`);
+  if (c.email) lines.push(`EMAIL:${c.email}`);
+  if (c.address) lines.push(`ADR:;;${c.address}`);
+  if (c.vat_number) lines.push(`X-VAT:${c.vat_number}`);
+  lines.push("END:VCARD");
+  return lines.join("\n");
+}
+function projectPayload(p) {
+  const c = client(p.client_id);
+  return [
+    `Progetto: ${p.title}`,
+    `Cliente: ${c.name || "—"}`,
+    c.company ? `Azienda: ${c.company}` : "",
+    `Stato: ${labels[p.status] || p.status || "—"}`,
+    p.deadline ? `Scadenza: ${p.deadline}` : "",
+    p.description ? `\n${p.description}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+/** Riempe il contenuto del QR con i dati di un cliente o di un progetto aperti nell'editor. */
+function qrFill(fromClient) {
+  const c = fromClient ? client($("#f-qr-client")?.value) : null;
+  const p = fromClient ? null : project($("#f-qr-project")?.value);
+  if (fromClient && !c.id) return toast("Non c'è ancora un cliente da usare.");
+  if (!fromClient && !p.id) return toast("Non c'è ancora un progetto da usare.");
+  const target = $("#modal [name=payload]");
+  if (target) target.value = fromClient ? clientVcard(c) : projectPayload(p);
+  qrPreview();
+}
 function bindView() {
   $$("[data-height]").forEach(
     (b) => (b.style.height = b.dataset.height + "px"),
   );
+  // Anteprime dei QR salvati: si disegnano dopo il markup, con la stessa
+  // funzione usata dall'editor, così colore e foto sono quelli salvati.
+  $$("[data-qr-thumb]").forEach((canvas) => {
+    const item = (state.tools?.qr || []).find((x) => x.id === Number(canvas.dataset.qrThumb));
+    if (!item) return;
+    (async () => {
+      const logo = item.has_logo ? await imageFromSrc(`/api/tools/qr/${item.id}/logo`) : null;
+      await paintQr(canvas, { ...item, logo, pixels: 320 });
+    })();
+  });
   if ($("#search"))
     $("#search").oninput = (e) => {
       const pos = e.target.selectionStart;
@@ -1976,6 +2249,48 @@ document.addEventListener("click", async (e) => {
       await refresh();
       return toast("Apple disconnesso.");
     }
+    if (a === "new-link") return linkModal();
+    if (a === "edit-link") return linkModal(id);
+    if (a === "delete-link")
+      return confirmAction(
+        "Eliminare il link breve?",
+        "Il link smetterà di funzionare per chi lo ha già ricevuto. Il conteggio dei clic viene perso.",
+        async () => {
+          await api("/api/tools/links/delete", { id: Number(id) });
+          await refresh();
+          toast("Link eliminato.");
+        },
+      );
+    if (a === "copy-link") {
+      const l = (state.tools?.links || []).find((x) => x.id === Number(id));
+      if (!l) return;
+      try {
+        await navigator.clipboard.writeText(shortUrl(l.slug));
+        toast("Link copiato negli appunti.");
+      } catch {
+        toast(shortUrl(l.slug));
+      }
+      return;
+    }
+    if (a === "link-qr") {
+      const l = (state.tools?.links || []).find((x) => x.id === Number(id));
+      if (!l) return;
+      return qrModal(undefined, { title: l.label || l.slug, payload: shortUrl(l.slug) });
+    }
+    if (a === "new-qr") return qrModal();
+    if (a === "edit-qr") return qrModal(id);
+    if (a === "delete-qr")
+      return confirmAction(
+        "Eliminare il QR?",
+        "Il codice smetterà di puntare al suo contenuto. Le immagini già scaricate restano valide.",
+        async () => {
+          await api("/api/tools/qr/delete", { id: Number(id) });
+          await refresh();
+          toast("QR eliminato.");
+        },
+      );
+    if (a === "qr-download") return downloadQr();
+    if (a === "qr-fill-client" || a === "qr-fill-project") return qrFill(a === "qr-fill-client");
     if (a === "new-note") return noteModal();
     if (a === "edit-note") return noteModal(id);
     if (a === "email-note") return emailNoteModal(id);

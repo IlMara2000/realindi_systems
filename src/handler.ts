@@ -87,6 +87,19 @@ import {
 import { agentReply, executeAgentActions } from "./agent.js";
 import { bookingLimit, cancelLimit, replyLimit } from "./ratelimit.js";
 import {
+  activeLink,
+  deleteLink,
+  deleteQr,
+  listTools,
+  qrLogo,
+  qrMatrix,
+  registerClick,
+  saveLink,
+  saveQr,
+  ECC_LEVELS,
+  type EccLevel,
+} from "./tools.js";
+import {
   conversationThread,
   ingestInbound,
   listConversations,
@@ -655,6 +668,22 @@ async function handleGet(req: HandlerRequest): Promise<HandlerResponse> {
     return send(info);
   }
 
+  // Link brevi: pubblici e senza sessione, altrimenti non sarebbero link da
+  // condividere. Un link disattivato o inesistente risponde 404, non 401.
+  const shortLink = /^\/l\/([a-z0-9-]{2,40})$/.exec(path);
+  if (shortLink) {
+    const link = await activeLink(shortLink[1]);
+    if (!link) return sendError(404, "Link non trovato.");
+    // Il conteggio non deve mai impedire il redirect: se il database rifiuta
+    // l'incremento, il link continua a funzionare per chi lo apre.
+    try {
+      await registerClick(link.id);
+    } catch (err) {
+      console.error("Conteggio clic non riuscito:", err);
+    }
+    return send("", 302, "text/plain; charset=utf-8", [["Location", link.target]]);
+  }
+
   if (path === "/api/site") {
     const s = await settings();
     return send({
@@ -702,6 +731,15 @@ async function handleGet(req: HandlerRequest): Promise<HandlerResponse> {
   if (path === "/api/estimates/catalog") return send(CATALOG);
 
   if (path === "/api/notes") return send({ notes: await listNotes() });
+
+  if (path === "/api/tools") return send(await listTools());
+
+  const qrLogoMatch = /^\/api\/tools\/qr\/(\d+)\/logo$/.exec(path);
+  if (qrLogoMatch) {
+    const logo = await qrLogo(qrLogoMatch[1]);
+    if (!logo) throw new Invalid("Questo QR non ha una foto.");
+    return send(logo.bytes, 200, logo.mime);
+  }
 
   if (path === "/api/events") {
     const { from, to } = parseRange(parseQuery(req.query));
@@ -762,6 +800,7 @@ async function handleGet(req: HandlerRequest): Promise<HandlerResponse> {
       appointments,
       blocks,
       notes: await p.note.findMany({ orderBy: [{ pinned: "desc" }, { updated_at: "desc" }] }),
+      tools: await listTools(),
       accessi: await accessiRecenti(),
       sessioni: await sessioniAttive(token),
       codici_emergenza: await codiciDisponibili(),
@@ -1359,6 +1398,34 @@ async function handlePost(req: HandlerRequest): Promise<HandlerResponse> {
     if (!existing) return sendError(404, "Nota non trovata.");
     await p.note.delete({ where: { id } });
     return send({ ok: true });
+  }
+
+  if (path === "/api/tools/links") {
+    return send({ ok: true, ...(await saveLink(d)) });
+  }
+
+  if (path === "/api/tools/links/delete") {
+    await deleteLink(d.id);
+    return send({ ok: true });
+  }
+
+  if (path === "/api/tools/qr") {
+    return send({ ok: true, ...(await saveQr(d)) });
+  }
+
+  if (path === "/api/tools/qr/delete") {
+    await deleteQr(d.id);
+    return send({ ok: true });
+  }
+
+  // Matrice del QR: il browser la disegna con i colori scelti e la foto al
+  // centro, così l'anteprima e il PNG scaricato restano nitidi.
+  if (path === "/api/tools/qr/render") {
+    const payload = typeof d.payload === "string" ? d.payload : "";
+    if (!payload.trim()) throw new Invalid("Scrivi il contenuto da mettere nel QR.");
+    const wanted = String(d.ecc ?? "H").toUpperCase();
+    const ecc = (ECC_LEVELS as readonly string[]).includes(wanted) ? (wanted as EccLevel) : "H";
+    return send({ ...qrMatrix(payload, ecc), ecc });
   }
 
   if (path === "/api/events") {

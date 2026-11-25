@@ -9,6 +9,7 @@
   ],
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api?path=$1" },
+    { "source": "/l/:slug", "destination": "/api?link=:slug" },
     { "source": "/", "destination": "/api?page=home" },
     { "source": "/bio", "destination": "/api?page=bio" },
     { "source": "/lavori/:slug", "destination": "/lavori/:slug.html" },

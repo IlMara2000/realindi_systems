@@ -66,9 +66,19 @@ export default async function apiHandler(
     return;
   }
 
+  // Link brevi: /l/<slug> è pubblico e arriva qui con ?link=<slug>. Lo slug è
+  // ricontrollato: il rewrite non deve diventare un percorso arbitrario.
+  const shortSlug = url.searchParams.get("link");
+  if (shortSlug !== null && !/^[a-z0-9-]{2,40}$/.test(shortSlug)) {
+    notFound(res);
+    return;
+  }
+
   const segments = url.searchParams.get("path");
-  const apiPath = pagePath ?? (segments ? `/api/${segments}` : "/api/");
+  const apiPath =
+    pagePath ?? (shortSlug !== null ? `/l/${shortSlug}` : segments ? `/api/${segments}` : "/api/");
   url.searchParams.delete("path");
+  url.searchParams.delete("link");
 
   const headers: Record<string, string | undefined> = {};
   for (const [key, value] of Object.entries(req.headers)) {

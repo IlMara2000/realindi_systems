@@ -29,12 +29,14 @@
     "jszip": "^3.10.2",
     "nodemailer": "^10.3.1",
     "pg": "^8.23.1",
+    "qrcode": "^1.5.4",
     "xmllint-wasm": "^5.3.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@types/nodemailer": "^8.0.2",
     "@types/pg": "^8.23.1",
+    "@types/qrcode": "^1.5.5",
     "esbuild": "^0.28.2",
     "happy-dom": "^21.0.4",
     "prisma": "^7.10.1",

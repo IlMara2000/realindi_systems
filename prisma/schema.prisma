@@ -436,6 +436,39 @@ model AssistantHit {
   @@map("assistant_hits")
 }
 
+// --------------------------------------------------------------- strumenti
+// Link brevi: `/l/<slug>` è pubblico e reindirizza al bersaglio, contando i
+// clic. Il bersaglio può essere un indirizzo http(s) o un percorso interno.
+model ShortLink {
+  id         Int     @id @default(autoincrement())
+  slug       String  @unique
+  target     String
+  label      String  @default("")
+  clicks     Int     @default(0)
+  active     Boolean @default(true)
+  created_at String  @default(dbgenerated("to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD HH24:MI:SS')"))
+  @@index([created_at])
+  @@map("short_links")
+}
+
+// QR personalizzati: il contenuto è testo libero (un link, un contatto, una
+// nota) e la foto del centro vive nel database come BLOB, come i documenti.
+// Il codice non è salvato come immagine: si ridisegna dal contenuto, così
+// colori e foto restano modificabili senza perdere qualità.
+model QrCode {
+  id         Int     @id @default(autoincrement())
+  title      String
+  payload    String
+  foreground String  @default("#111111")
+  background String  @default("#ffffff")
+  ecc        String  @default("H")
+  logo_mime  String?
+  logo       Bytes?
+  created_at String  @default(dbgenerated("to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD HH24:MI:SS')"))
+  @@index([created_at])
+  @@map("qr_codes")
+}
+
 // Allegati ai messaggi di conversazione (foto, PDF, audio, documenti).
 // I contenuti vivono nel database come BLOB, come i documenti esistenti.
 model MessageAttachment {

@@ -2900,3 +2900,42 @@ dialog::backdrop {
 .limiti-avviso small {
   color: var(--muted);
 }
+
+/* Strumenti — QR personalizzati e link brevi.
+   Il canvas si disegna in JS: qui solo dimensioni leggibili e griglia più
+   stretta dentro la colonna dei due pannelli. */
+.qr-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.qr-card {
+  gap: 8px;
+}
+.qr-canvas {
+  width: 100%;
+  max-width: 180px;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  image-rendering: pixelated;
+}
+.qr-card .qr-canvas {
+  max-width: 140px;
+}
+.qr-card .hint {
+  margin: 0;
+}
+.qr-layout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  align-items: flex-start;
+}
+.qr-layout .qr-canvas {
+  max-width: 220px;
+}
+@media (max-width: 900px) {
+  .qr-grid {
+    grid-template-columns: 1fr;
+  }
+}
