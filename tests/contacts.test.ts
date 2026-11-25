@@ -257,6 +257,50 @@ describe("POST /api/sync/contacts", () => {
     );
   });
 
+  it("salva le email normalizzate anche quando la scheda è unica", async () => {
+    const c = await fresh();
+    await seedApple();
+
+    // Nessun doppione da fondere: l'email arriva maiuscola e con una variante
+    // della stessa casella. Quello che si salva non è quello che si è letto.
+    const cards = reportDoc([
+      {
+        href: "/123/card/Default/uno.vcf",
+        etag: "e1",
+        body: vcard({
+          UID: "uid-uno",
+          FN: "Mario Rossi",
+          EMAIL: ["Mario@Example.com", "MARIO@example.com"],
+        }),
+      },
+    ]);
+
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input: any, init: any = {}) => {
+      const url = String(input instanceof Request ? input.url : input);
+      const method = String(init.method ?? "GET").toUpperCase();
+      const body = typeof init.body === "string" ? init.body : "";
+      if (!url.includes("icloud.com")) return real(input, init);
+      const xml = (s: string) =>
+        new Response(s, { status: 207, headers: { "content-type": "application/xml" } });
+      if (method === "PROPFIND") {
+        if (body.includes("addressbook-home-set")) return xml(HOME_DOC);
+        if (body.includes("getctag")) return xml(LIST_DOC);
+        return xml(PRINCIPAL_DOC);
+      }
+      if (method === "REPORT") return xml(cards);
+      throw new Error(`richiesta inattesa: ${method} ${url}`);
+    });
+
+    const r = await c.request("/api/sync/contacts", {});
+    expect(r.status).toBe(200);
+    expect(r.body.errors).toEqual([]);
+    expect(r.body.imported).toBe(1);
+
+    const [contatto] = await sql("SELECT emails FROM contacts");
+    expect(JSON.parse(contatto.emails)).toEqual(["mario@example.com"]);
+  });
+
   it("iCloud che rifiuta le credenziali in sync spiega la revoca", async () => {
     const c = await fresh();
     await seedApple();

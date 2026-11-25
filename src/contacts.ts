@@ -444,7 +444,10 @@ async function applyRemote(remotes: RemoteContact[], counts: Counters): Promise<
       }
     }
 
-    const emails = JSON.stringify(remote.emails);
+    // Le email si salvano già normalizzate, come si confrontano: altrimenti
+    // «Mario@Example.com» resta maiuscola nel contatto e la stessa persona
+    // scritta in due modi compare due volte nella ricerca per email.
+    const emails = JSON.stringify([...new Set(remote.emails.map(normalizeEmail).filter(Boolean))]);
     const phones = JSON.stringify(remote.phones);
 
     if (!contactId) {
