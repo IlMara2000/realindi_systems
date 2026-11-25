@@ -445,10 +445,29 @@ model ShortLink {
   target     String
   label      String  @default("")
   clicks     Int     @default(0)
+  // Visite uniche: una per impronta (IP + browser) al giorno. `clicks` resta
+  // il conteggio grezzo, così si vede anche quanto pesano refresh e bot.
+  unique_visits Int  @default(0)
   active     Boolean @default(true)
   created_at String  @default(dbgenerated("to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD HH24:MI:SS')"))
+  qr_codes   QrCode[]
+  visits     LinkVisit[]
   @@index([created_at])
   @@map("short_links")
+}
+
+// Eventi di visita: servono al conteggio delle visite uniche e si eliminano da
+// soli dopo 35 giorni. `fingerprint` è un hash salato di giorno, link, IP e
+// browser: non conserva l'indirizzo in chiaro.
+model LinkVisit {
+  id          Int    @id @default(autoincrement())
+  link_id     Int
+  fingerprint String
+  at          BigInt
+  link        ShortLink @relation(fields: [link_id], references: [id], onDelete: Cascade)
+  @@unique([link_id, fingerprint])
+  @@index([link_id, at])
+  @@map("link_visits")
 }
 
 // QR personalizzati: il contenuto è testo libero (un link, un contatto, una
@@ -462,10 +481,15 @@ model QrCode {
   foreground String  @default("#111111")
   background String  @default("#ffffff")
   ecc        String  @default("H")
+  // QR dinamico: se c'è un link breve, il codice contiene il suo indirizzo e la
+  // destinazione si cambia senza ristampare. Senza link vale `payload`.
+  link_id    Int?
+  link       ShortLink? @relation(fields: [link_id], references: [id], onDelete: SetNull)
   logo_mime  String?
   logo       Bytes?
   created_at String  @default(dbgenerated("to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD HH24:MI:SS')"))
   @@index([created_at])
+  @@index([link_id])
   @@map("qr_codes")
 }
 

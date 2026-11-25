@@ -6,7 +6,7 @@
 // canvas, così il codice è nitido a qualsiasi dimensione e resta modificabile.
 import QRCode from "qrcode";
 import { prisma } from "./db.js";
-import { Invalid, tokenHex } from "./util.js";
+import { Invalid, sha256Hex, tokenHex } from "./util.js";
 
 export const ECC_LEVELS = ["L", "M", "Q", "H"] as const;
 export type EccLevel = (typeof ECC_LEVELS)[number];
@@ -22,6 +22,12 @@ function positiveId(raw: unknown, message = "Identificativo non valido."): numbe
   const id = Number(raw);
   if (!Number.isInteger(id) || id <= 0) throw new Invalid(message);
   return id;
+}
+
+/** Id facoltativo: vuoto vale null, altrimenti deve essere un intero positivo. */
+function optionalId(raw: unknown, message: string): number | null {
+  if (raw === undefined || raw === null || raw === "") return null;
+  return positiveId(raw, message);
 }
 
 function isUniqueViolation(err: unknown): boolean {
@@ -137,8 +143,44 @@ export async function activeLink(slug: string): Promise<{ id: number; target: st
   return { id: row.id, target: row.target };
 }
 
-export async function registerClick(id: number): Promise<void> {
-  await prisma().shortLink.update({ where: { id }, data: { clicks: { increment: 1 } } });
+/** Dopo quanti giorni le righe di visita vengono eliminate. */
+const VISIT_RETENTION_DAYS = 35;
+
+/**
+ * Registra una visita: il clic grezzo sale sempre, la visita unica solo la prima
+ * volta che la stessa impronta vede quel link nella giornata. L'impronta è un
+ * hash salato di giorno, link, IP e browser — non conserva l'indirizzo in
+ * chiaro — e cambia ogni giorno, quindi chi torna domani conta di nuovo.
+ *
+ * L'inserimento usa `skipDuplicates` sul vincolo unico (link, impronta): due
+ * richieste contemporanee non possono contare due visite.
+ */
+export async function registerVisit(
+  linkId: number,
+  visitor: { ip: string; userAgent: string },
+): Promise<void> {
+  const p = prisma();
+  const day = new Date().toISOString().slice(0, 10);
+  const fingerprint = sha256Hex(
+    `${process.env.INTEGRATIONS_KEY ?? "realindi"}|${day}|${linkId}|${visitor.ip}|${visitor.userAgent}`,
+  );
+  const now = Date.now();
+  const inserted = await p.linkVisit.createMany({
+    data: [{ link_id: linkId, fingerprint, at: BigInt(now) }],
+    skipDuplicates: true,
+  });
+  await p.shortLink.update({
+    where: { id: linkId },
+    data: {
+      clicks: { increment: 1 },
+      ...(inserted.count ? { unique_visits: { increment: 1 } } : {}),
+    },
+  });
+  if (inserted.count) {
+    await p.linkVisit.deleteMany({
+      where: { link_id: linkId, at: { lt: BigInt(now - VISIT_RETENTION_DAYS * 86_400_000) } },
+    });
+  }
 }
 
 // --------------------------------------------------------------------- qr
@@ -163,11 +205,15 @@ function hexValue(raw: unknown, fallback: string, label: string): string {
   return v.toLowerCase();
 }
 
-export function validateQrFields(d: Record<string, unknown>): QrFields {
+/**
+ * Campi del QR. Il contenuto è obbligatorio solo senza link breve: un QR
+ * dinamico prende l'indirizzo dal link, quindi `payload` può restare vuoto.
+ */
+export function validateQrFields(d: Record<string, unknown>, payloadRequired = true): QrFields {
   const title = String(d.title ?? "").trim();
   if (!title || title.length > 120) throw new Invalid("Nome del QR non valido (1-120 caratteri).");
   const payload = String(d.payload ?? "").trim();
-  if (!payload) throw new Invalid("Scrivi il contenuto da mettere nel QR.");
+  if (payloadRequired && !payload) throw new Invalid("Scrivi il contenuto da mettere nel QR.");
   if (payload.length > MAX_PAYLOAD || Buffer.byteLength(payload, "utf8") > MAX_PAYLOAD) {
     throw new Invalid(`Contenuto troppo lungo: massimo ${MAX_PAYLOAD} caratteri.`);
   }
@@ -238,27 +284,34 @@ function decodeLogo(raw: unknown): { mime: string; bytes: Uint8Array<ArrayBuffer
 }
 
 export async function saveQr(d: Record<string, unknown>): Promise<{ id: number }> {
-  const fields = validateQrFields(d);
+  const p = prisma();
+  const linkId = optionalId(d.link_id, "Link breve non valido.");
+  const fields = validateQrFields(d, linkId === null);
+  if (linkId !== null) {
+    const link = await p.shortLink.findUnique({ where: { id: linkId }, select: { id: true } });
+    if (!link) throw new Invalid("Link breve non trovato.");
+  }
+  // Il contenuto statico si verifica subito; per un QR dinamico l'indirizzo
+  // definitivo si conosce solo al disegno, quindi si controlla solo l'eventuale
+  // testo di riserva.
+  if (fields.payload) qrMatrix(fields.payload, fields.ecc);
+
   const logo = d.logo_data ? decodeLogo(d.logo_data) : null;
   const removeLogo = d.remove_logo === true;
-  // Se il contenuto non entra in un QR, il salvataggio non deve riuscire
-  // lasciando un elemento che poi non si riesce a disegnare.
-  qrMatrix(fields.payload, fields.ecc);
-
   const logoPatch: { logo_mime?: string | null; logo?: Uint8Array<ArrayBuffer> | null } = removeLogo
     ? { logo_mime: null, logo: null }
     : logo
       ? { logo_mime: logo.mime, logo: logo.bytes }
       : {};
-  const p = prisma();
+  const data = { ...fields, link_id: linkId, ...logoPatch };
 
   if (d.id !== undefined) {
     const id = positiveId(d.id, "QR non trovato.");
-    const { count } = await p.qrCode.updateMany({ where: { id }, data: { ...fields, ...logoPatch } });
+    const { count } = await p.qrCode.updateMany({ where: { id }, data });
     if (!count) throw new Invalid("QR non trovato.");
     return { id };
   }
-  const created = await p.qrCode.create({ data: { ...fields, ...logoPatch } });
+  const created = await p.qrCode.create({ data });
   return { id: created.id };
 }
 
@@ -299,6 +352,8 @@ export async function listTools(): Promise<{
     background: string;
     ecc: string;
     has_logo: boolean;
+    link_id: number | null;
+    link_slug: string | null;
     created_at: string;
   }>;
 }> {
@@ -307,7 +362,11 @@ export async function listTools(): Promise<{
   // serve solo sapere se la foto c'è.
   const [links, qr] = await Promise.all([
     p.shortLink.findMany({ orderBy: { created_at: "desc" } }),
-    p.qrCode.findMany({ omit: { logo: true }, orderBy: { created_at: "desc" } }),
+    p.qrCode.findMany({
+      omit: { logo: true },
+      include: { link: { select: { slug: true } } },
+      orderBy: { created_at: "desc" },
+    }),
   ]);
   return {
     links,
@@ -319,6 +378,8 @@ export async function listTools(): Promise<{
       background: row.background,
       ecc: row.ecc,
       has_logo: Boolean(row.logo_mime),
+      link_id: row.link_id,
+      link_slug: row.link?.slug ?? null,
       created_at: row.created_at,
     })),
   };

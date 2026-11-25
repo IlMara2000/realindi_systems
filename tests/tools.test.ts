@@ -43,9 +43,8 @@ describe("accessi agli strumenti", () => {
 });
 
 describe("link brevi", () => {
-  it("crea, reindirizza, conta i clic ed elimina", async () => {
+  it("conta clic grezzi e visite uniche, ignorando prefetch e browser diversi", async () => {
     const c = await fresh();
-
     const created = await c.request("/api/tools/links", {
       label: "Listino",
       target: "https://example.test/listino",
@@ -54,12 +53,12 @@ describe("link brevi", () => {
     expect(created.status).toBe(200);
     expect(created.body.slug).toBe("listino");
 
-    let state = await c.state();
-    const saved = state.tools.links.find((l: any) => l.slug === "listino");
+    const saved = (await c.state()).tools.links.find((l: any) => l.slug === "listino");
     expect(saved).toMatchObject({
       label: "Listino",
       target: "https://example.test/listino",
       clicks: 0,
+      unique_visits: 0,
       active: true,
     });
 
@@ -68,10 +67,39 @@ describe("link brevi", () => {
       expect(hop.status).toBe(302);
       expect(hop.headers.get("location")).toBe("https://example.test/listino");
     }
-    state = await c.state();
-    expect(state.tools.links.find((l: any) => l.slug === "listino").clicks).toBe(2);
+    let row = (await c.state()).tools.links.find((l: any) => l.slug === "listino");
+    // Due clic grezzi ma una sola visita: stesso IP e stesso browser.
+    expect(row.clicks).toBe(2);
+    expect(row.unique_visits).toBe(1);
 
-    // Disattivato: non reindirizza più e non conta.
+    // Un altro browser è una visita nuova.
+    await httpFetch(base + "/l/listino", {
+      redirect: "manual",
+      headers: { "user-agent": "AltroBrowser/1.0" },
+    });
+    row = (await c.state()).tools.links.find((l: any) => l.slug === "listino");
+    expect(row.clicks).toBe(3);
+    expect(row.unique_visits).toBe(2);
+
+    // Il prefetch non conta: né clic né visita.
+    await httpFetch(base + "/l/listino", {
+      redirect: "manual",
+      headers: { "user-agent": "TerzoBrowser/1.0", "sec-purpose": "prefetch;prerender" },
+    });
+    row = (await c.state()).tools.links.find((l: any) => l.slug === "listino");
+    expect(row.clicks).toBe(3);
+    expect(row.unique_visits).toBe(2);
+  });
+
+  it("un link disattivato o eliminato non reindirizza più", async () => {
+    const c = await fresh();
+    await c.request("/api/tools/links", {
+      label: "Listino",
+      target: "https://example.test/listino",
+      slug: "listino",
+    });
+    const saved = (await c.state()).tools.links.find((l: any) => l.slug === "listino");
+
     const off = await c.request("/api/tools/links", {
       id: saved.id,
       label: "Listino",
@@ -82,9 +110,9 @@ describe("link brevi", () => {
     expect(off.status).toBe(200);
     expect((await httpFetch(base + "/l/listino", { redirect: "manual" })).status).toBe(404);
 
-    const deleted = await c.request("/api/tools/links/delete", { id: saved.id });
-    expect(deleted.status).toBe(200);
+    expect((await c.request("/api/tools/links/delete", { id: saved.id })).status).toBe(200);
     expect((await c.state()).tools.links).toEqual([]);
+    expect((await httpFetch(base + "/l/listino", { redirect: "manual" })).status).toBe(404);
   });
 
   it("reindirizza anche verso un percorso interno", async () => {
@@ -169,6 +197,39 @@ describe("QR personalizzati", () => {
 
     expect((await c.request("/api/tools/qr/delete", { id: item.id })).status).toBe(200);
     expect((await c.state()).tools.qr).toEqual([]);
+  });
+
+  it("QR dinamico: contiene il link breve e segue la sua destinazione", async () => {
+    const c = await fresh();
+    const link = await c.request("/api/tools/links", { label: "Menu", target: "https://example.test/menu", slug: "menu" });
+    expect(link.status).toBe(200);
+
+    const dynamic = await c.request("/api/tools/qr", {
+      title: "Menu al tavolo",
+      link_id: link.body.id,
+      payload: "",
+    });
+    expect(dynamic.status).toBe(200);
+    const item = (await c.state()).tools.qr.find((q: any) => q.id === dynamic.body.id);
+    expect(item).toMatchObject({ link_id: link.body.id, link_slug: "menu", payload: "" });
+
+    // L'indirizzo definitivo si compone nel browser; il render usa quello.
+    const rendered = await c.request("/api/tools/qr/render", {
+      payload: `${base}/l/${item.link_slug}`,
+      ecc: item.ecc,
+    });
+    expect(rendered.status).toBe(200);
+
+    // Se il link sparisce il QR resta, senza riferimento: non si rompe nulla.
+    expect((await c.request("/api/tools/links/delete", { id: link.body.id })).status).toBe(200);
+    const orphan = (await c.state()).tools.qr.find((q: any) => q.id === dynamic.body.id);
+    expect(orphan.link_id).toBeNull();
+    expect((await c.request("/api/tools/qr/delete", { id: dynamic.body.id })).status).toBe(200);
+  });
+
+  it("rifiuta un QR dinamico che punta a un link inesistente", async () => {
+    const c = await fresh();
+    expect((await c.request("/api/tools/qr", { title: "Fantasma", link_id: 999, payload: "" })).status).toBe(400);
   });
 
   it("tiene la foto fuori dall'elenco e limita il contenuto del render", async () => {

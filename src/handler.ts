@@ -93,7 +93,7 @@ import {
   listTools,
   qrLogo,
   qrMatrix,
-  registerClick,
+  registerVisit,
   saveLink,
   saveQr,
   ECC_LEVELS,
@@ -164,6 +164,14 @@ async function limitePubblico(
   if (esito.allowed) return null;
   const minuti = Math.max(1, Math.ceil(esito.retryAfterMs / 60_000));
   return `Troppe richieste da questo indirizzo. Riprova tra ${minuti} ${minuti === 1 ? "minuto" : "minuti"}.`;
+}
+
+/**
+ * Il prefetch del browser non è una visita: contarlo gonfierebbe i numeri
+ * senza che nessuno abbia aperto il link.
+ */
+function isPrefetch(headers: Record<string, string | undefined>): boolean {
+  return (headers["sec-purpose"] ?? headers["purpose"] ?? "").includes("prefetch");
 }
 
 /**
@@ -676,10 +684,15 @@ async function handleGet(req: HandlerRequest): Promise<HandlerResponse> {
     if (!link) return sendError(404, "Link non trovato.");
     // Il conteggio non deve mai impedire il redirect: se il database rifiuta
     // l'incremento, il link continua a funzionare per chi lo apre.
-    try {
-      await registerClick(link.id);
-    } catch (err) {
-      console.error("Conteggio clic non riuscito:", err);
+    if (!isPrefetch(req.headers)) {
+      try {
+        await registerVisit(link.id, {
+          ip: req.ip,
+          userAgent: req.headers["user-agent"] ?? "",
+        });
+      } catch (err) {
+        console.error("Conteggio clic non riuscito:", err);
+      }
     }
     return send("", 302, "text/plain; charset=utf-8", [["Location", link.target]]);
   }

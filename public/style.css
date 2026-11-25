@@ -2939,3 +2939,22 @@ dialog::backdrop {
     grid-template-columns: 1fr;
   }
 }
+
+/* Strumenti — righe dei link brevi.
+   Nel pannello stretto i quattro comandi non stanno accanto all'indirizzo:
+   vanno a capo sotto, invece di comprimere il testo in una colonna di parole. */
+.list-row.link-row {
+  flex-wrap: wrap;
+  row-gap: 10px;
+}
+.list-row.link-row .list-info {
+  flex: 1 1 100%;
+}
+.list-row.link-row .list-info strong {
+  font-size: 13.5px;
+}
+.list-row.link-row .actions {
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}

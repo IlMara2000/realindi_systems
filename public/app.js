@@ -1404,10 +1404,22 @@ function toolsView() {
   );
 }
 function shortLinkRow(l) {
-  return `<div class="list-row"><div class="list-info"><strong>${esc(l.label || l.target)}</strong><small>${esc(shortUrl(l.slug))} · ${l.clicks} clic${l.active ? "" : " · disattivato"}</small><small>${esc(l.target)}</small></div><div class="actions">${btn("Copia", "copy-link", l.id)}${btn("QR", "link-qr", l.id)}${btn("Modifica", "edit-link", l.id)}${btn("Elimina", "delete-link", l.id, "secondary small danger")}</div></div>`;
+  const visite = l.unique_visits === 1 ? "1 visita unica" : `${l.unique_visits} visite uniche`;
+  return `<div class="list-row link-row"><div class="list-info"><strong>${esc(l.label || l.target)}</strong><small>${esc(shortUrl(l.slug))} · ${l.clicks} clic · ${visite}${l.active ? "" : " · disattivato"}</small><small>${esc(l.target)}</small></div><div class="actions">${btn("Copia", "copy-link", l.id)}${btn("QR", "link-qr", l.id)}${btn("Modifica", "edit-link", l.id)}${btn("Elimina", "delete-link", l.id, "secondary small danger")}</div></div>`;
+}
+/** Indirizzo del link breve, se esiste ancora. */
+function shortUrlForLink(id) {
+  const l = (state.tools?.links || []).find((x) => x.id === Number(id));
+  return l ? shortUrl(l.slug) : "";
+}
+/** Contenuto effettivo del QR: l'indirizzo del link breve, se è dinamico. */
+function qrPayload(item) {
+  if (item && item.link_id) return shortUrlForLink(item.link_id) || String(item.payload || "");
+  return String(item?.payload || "");
 }
 function qrCard(item) {
-  return `<article class="note-card qr-card"><canvas class="qr-canvas" data-qr-thumb="${item.id}" width="256" height="256" role="img" aria-label="Anteprima del QR ${esc(item.title)}"></canvas><div class="note-head"><h3>${esc(item.title)}</h3>${item.has_logo ? '<span class="pill confirmed">Foto</span>' : ""}</div><p>${esc(excerpt(item.payload, 90))}</p><p class="hint">${esc(item.foreground)} · ${esc(item.background)} · correzione ${esc(item.ecc)}</p><div class="actions note-actions">${btn("Apri", "edit-qr", item.id)}${btn("Elimina", "delete-qr", item.id, "secondary small danger")}</div></article>`;
+  const content = qrPayload(item);
+  return `<article class="note-card qr-card"><canvas class="qr-canvas" data-qr-thumb="${item.id}" width="256" height="256" role="img" aria-label="Anteprima del QR ${esc(item.title)}"></canvas><div class="note-head"><h3>${esc(item.title)}</h3><div>${item.link_id ? '<span class="pill">Link breve</span> ' : ""}${item.has_logo ? '<span class="pill confirmed">Foto</span>' : ""}</div></div><p>${esc(content ? excerpt(content, 90) : "Il link collegato non esiste più: apri il QR per scegliere un nuovo contenuto.")}</p><p class="hint">${esc(item.foreground)} · ${esc(item.background)} · correzione ${esc(item.ecc)}</p><div class="actions note-actions">${btn("Apri", "edit-qr", item.id)}${btn("Elimina", "delete-qr", item.id, "secondary small danger")}</div></article>`;
 }
 // La matrice arriva dal server (una stringa di 0/1 per riga) e il disegno
 // avviene qui: colori, foto al centro e PNG ad alta risoluzione senza servizi
@@ -1495,9 +1507,14 @@ function qrFormValues() {
     foreground: value("foreground") || "#111111",
     background: value("background") || "#ffffff",
     ecc: value("ecc") || "H",
+    link_id: value("link_id"),
     file: f.logo_file?.files?.[0] || null,
     removeLogo: Boolean(f.remove_logo?.checked),
   };
+}
+/** Con un link scelto il QR contiene quell'indirizzo, non il testo di riserva. */
+function qrValuesPayload(values) {
+  return (values.link_id && shortUrlForLink(values.link_id)) || values.payload;
 }
 async function qrLogoImage(values) {
   if (!values || values.removeLogo) return null;
@@ -1515,7 +1532,7 @@ function qrPreview() {
     const values = qrFormValues();
     if (!values) return;
     const logo = await qrLogoImage(values);
-    const error = await paintQr(canvas, { ...values, logo, pixels: 512 });
+    const error = await paintQr(canvas, { ...values, payload: qrValuesPayload(values), logo, pixels: 512 });
     const hint = $("#qr-hint");
     if (!hint || token !== qrPreview.token) return;
     hint.textContent =
@@ -1528,10 +1545,11 @@ function qrPreview() {
 async function downloadQr() {
   const values = qrFormValues();
   if (!values) return;
-  if (!values.payload.trim()) return toast("Scrivi il contenuto del QR.");
+  const payload = qrValuesPayload(values);
+  if (!payload.trim()) return toast("Scrivi il contenuto del QR o scegli un link breve.");
   const canvas = document.createElement("canvas");
   const logo = await qrLogoImage(values);
-  const error = await paintQr(canvas, { ...values, logo, pixels: 1024 });
+  const error = await paintQr(canvas, { ...values, payload, logo, pixels: 1024 });
   if (error) return toast(error);
   const name =
     (values.title || "qr")
@@ -1573,7 +1591,7 @@ function qrModal(id, preset) {
     : '<option value="">Nessun progetto</option>';
   showModal(
     item ? "Modifica QR" : "Nuovo QR personalizzato",
-    `<form class="form-grid">${item ? `<input type="hidden" name="id" value="${item.id}">` : ""}${field("Nome del QR", "title", "text", item?.title ?? preset?.title ?? "", 'required maxlength="120" placeholder="Scheda cliente, listino…"')}${area("Contenuto del QR", "payload", item?.payload ?? preset?.payload ?? "")}<div class="field full"><label>Dati dal gestionale</label><div class="actions"><select id="f-qr-client" aria-label="Cliente">${clientOptions}</select>${btn("Usa cliente", "qr-fill-client")}<select id="f-qr-project" aria-label="Progetto">${projectOptions}</select>${btn("Usa progetto", "qr-fill-project")}</div><p class="hint">Il contatto entra come vCard, il progetto come riepilogo. Il testo resta modificabile.</p></div>${field("Colore del codice", "foreground", "color", item?.foreground || "#111111")}${field("Sfondo", "background", "color", item?.background || "#ffffff")}${select("Correzione errori", "ecc", [["H", "Alta (consigliata con foto)"], ["Q", "Media"], ["M", "Bassa"], ["L", "Minima"]], item?.ecc || "H")}<div class="field full"><label for="f-qr-logo">Foto al centro (PNG, JPG o WebP, max 300 KB)</label><input id="f-qr-logo" name="logo_file" type="file" accept="image/png,image/jpeg,image/webp"></div>${item?.has_logo ? '<div class="field full check-row"><label><input type="checkbox" name="remove_logo">Rimuovi la foto attuale</label></div>' : ""}<div class="field full"><div class="qr-layout"><canvas class="qr-canvas" id="qr-preview-canvas" width="512" height="512" role="img" aria-label="Anteprima del QR"></canvas><div><p class="hint" id="qr-hint"></p><button type="button" class="secondary" data-action="qr-download">Scarica PNG</button></div></div></div>${formBottom(item ? "Salva QR" : "Crea QR")}</form>`,
+    `<form class="form-grid">${item ? `<input type="hidden" name="id" value="${item.id}">` : ""}${field("Nome del QR", "title", "text", item?.title ?? preset?.title ?? "", 'required maxlength="120" placeholder="Scheda cliente, listino…"')}${select("Punta a", "link_id", [["", "Contenuto libero"], ...(state.tools?.links || []).map((l) => [String(l.id), `${l.label || l.slug} — /l/${l.slug}`])], item?.link_id ? String(item.link_id) : preset?.link_id ? String(preset.link_id) : "")}<p class="hint">Con un link breve il QR contiene quell'indirizzo: se cambi la destinazione del link il codice resta valido e non va ristampato. Il testo qui sotto, in quel caso, fa da riserva.</p>${area("Contenuto del QR", "payload", item?.payload ?? preset?.payload ?? "")}<div class="field full"><label>Dati dal gestionale</label><div class="actions"><select id="f-qr-client" aria-label="Cliente">${clientOptions}</select>${btn("Usa cliente", "qr-fill-client")}<select id="f-qr-project" aria-label="Progetto">${projectOptions}</select>${btn("Usa progetto", "qr-fill-project")}</div><p class="hint">Il contatto entra come vCard, il progetto come riepilogo. Il testo resta modificabile.</p></div>${field("Colore del codice", "foreground", "color", item?.foreground || "#111111")}${field("Sfondo", "background", "color", item?.background || "#ffffff")}${select("Correzione errori", "ecc", [["H", "Alta (consigliata con foto)"], ["Q", "Media"], ["M", "Bassa"], ["L", "Minima"]], item?.ecc || "H")}<div class="field full"><label for="f-qr-logo">Foto al centro (PNG, JPG o WebP, max 300 KB)</label><input id="f-qr-logo" name="logo_file" type="file" accept="image/png,image/jpeg,image/webp"></div>${item?.has_logo ? '<div class="field full check-row"><label><input type="checkbox" name="remove_logo">Rimuovi la foto attuale</label></div>' : ""}<div class="field full"><div class="qr-layout"><canvas class="qr-canvas" id="qr-preview-canvas" width="512" height="512" role="img" aria-label="Anteprima del QR"></canvas><div><p class="hint" id="qr-hint"></p><button type="button" class="secondary" data-action="qr-download">Scarica PNG</button></div></div></div>${formBottom(item ? "Salva QR" : "Crea QR")}</form>`,
     async (d, form) => {
       const file = form.logo_file?.files?.[0] || null;
       let logoData;
@@ -1584,6 +1602,7 @@ function qrModal(id, preset) {
       await api("/api/tools/qr", {
         ...d,
         id: item?.id,
+        link_id: d.link_id || null,
         logo_data: logoData,
         remove_logo: form.remove_logo?.checked === true,
       });
@@ -1593,6 +1612,7 @@ function qrModal(id, preset) {
   const form = $("#modal form");
   if (form) {
     form.oninput = qrPreview;
+    form.onchange = qrPreview;
     if (form.logo_file) form.logo_file.onchange = qrPreview;
   }
   qrPreview();
@@ -1641,7 +1661,7 @@ function bindView() {
     if (!item) return;
     (async () => {
       const logo = item.has_logo ? await imageFromSrc(`/api/tools/qr/${item.id}/logo`) : null;
-      await paintQr(canvas, { ...item, logo, pixels: 320 });
+      await paintQr(canvas, { ...item, payload: qrPayload(item), logo, pixels: 320 });
     })();
   });
   if ($("#search"))
@@ -2275,7 +2295,7 @@ document.addEventListener("click", async (e) => {
     if (a === "link-qr") {
       const l = (state.tools?.links || []).find((x) => x.id === Number(id));
       if (!l) return;
-      return qrModal(undefined, { title: l.label || l.slug, payload: shortUrl(l.slug) });
+      return qrModal(undefined, { title: l.label || l.slug, link_id: l.id, payload: shortUrl(l.slug) });
     }
     if (a === "new-qr") return qrModal();
     if (a === "edit-qr") return qrModal(id);
