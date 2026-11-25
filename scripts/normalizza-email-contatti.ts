@@ -17,7 +17,7 @@
 import "dotenv/config";
 import { pathToFileURL } from "node:url";
 import { Client } from "pg";
-import { normalizeEmail } from "../src/contacts.js";
+import { emailsDelContatto, normalizeEmail } from "../src/contacts.js";
 import { ETICHETTE, classifica, descriviHost, rimedio } from "./diagnose-db.js";
 
 export interface RigaDaCorreggere {
@@ -40,9 +40,12 @@ export interface EsitoNormalizzazione {
 }
 
 /**
- * Email normalizzate e senza doppioni, nell'ordine in cui compaiono.
- * Restituisce null quando il valore non è un elenco JSON di stringhe: meglio
- * lasciare la riga com'è che sostituire un dato incompreso con un elenco vuoto.
+ * Email normalizzate e senza doppioni, nell'ordine in cui compaiono. La regola
+ * è quella di `emailsDelContatto` (src/contacts.ts), la stessa che usa la
+ * ricerca in lettura: qui si aggiunge solo il rifiuto dei valori che non sono
+ * un elenco JSON di stringhe, che la scrittura non deve mai sovrascrivere.
+ * Restituisce null in quel caso: meglio lasciare la riga com'è che sostituire
+ * un dato incompreso con un elenco vuoto.
  */
 export function emailsNormalizzate(valore: string): string[] | null {
   let grezzo: unknown;
@@ -52,7 +55,7 @@ export function emailsNormalizzate(valore: string): string[] | null {
     return null;
   }
   if (!Array.isArray(grezzo) || !grezzo.every((v) => typeof v === "string")) return null;
-  return [...new Set(grezzo.map(normalizeEmail).filter(Boolean))];
+  return emailsDelContatto(valore);
 }
 
 /**
