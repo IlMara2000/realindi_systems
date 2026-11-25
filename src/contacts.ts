@@ -73,6 +73,34 @@ export function normalizeEmail(value: string): string {
 }
 
 /** Solo cifre, senza prefisso internazionale: “+39 333 123 4567” → “3331234567”. */
+/**
+ * Email di un contatto lette dal database, normalizzate come alla scrittura.
+ *
+ * Il backfill (`npm run db:normalizza-email`) sistema le righe già salvate,
+ * ma finché non gira — o se una riga arriva da un backup vecchio — il campo può
+ * contenere «Mario@Example.com». Chi cerca e chi confronta deve leggere con la
+ * stessa regola con cui si scrive: così `mario@example.com` trova il contatto
+ * comunque sia stata salvata la maiuscola, e i doppioni si riconoscono sempre.
+ * Un valore illeggibile non fa fallire la ricerca: vale come nessuna email.
+ */
+export function emailsDelContatto(valore: string): string[] {
+  let grezzo: unknown;
+  try {
+    grezzo = JSON.parse(valore);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(grezzo)) return [];
+  return [
+    ...new Set(
+      grezzo
+        .filter((v): v is string => typeof v === "string")
+        .map(normalizeEmail)
+        .filter(Boolean),
+    ),
+  ];
+}
+
 export function normalizePhone(value: string): string {
   const digits = value.replace(/\D/g, "");
   if (digits.length > 10 && digits.startsWith("39")) return digits.slice(2);
@@ -376,7 +404,7 @@ async function matchExisting(remote: RemoteContact): Promise<{ id: number } | nu
 
   const rows = await p.contact.findMany({ where: { deleted_at: null } });
   for (const row of rows) {
-    const localEmails = (JSON.parse(row.emails) as string[]).map(normalizeEmail);
+    const localEmails = emailsDelContatto(row.emails);
     if (emails.some((e) => localEmails.includes(e))) return { id: row.id };
   }
   for (const row of rows) {

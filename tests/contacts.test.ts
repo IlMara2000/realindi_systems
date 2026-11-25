@@ -3,7 +3,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
 import { startServer, type RunningServer } from "../scripts/dev-server.js";
 import { sql, makeClient, resetDb, type TestClient } from "./helpers.js";
-import { normalizePhone, parseVcards } from "../src/contacts.js";
+import { emailsDelContatto, normalizePhone, parseVcards } from "../src/contacts.js";
 
 const KEY = "chiave-di-test-non-produzione";
 
@@ -108,6 +108,17 @@ function reportDoc(cards: Array<{ href: string; etag: string; body: string }>): 
     "</d:multistatus>"
   );
 }
+
+describe("lettura delle email salvate", () => {
+  it("normalizza le email lette dal database, come alla scrittura", () => {
+    expect(emailsDelContatto('["Mario@Example.com"]')).toEqual(["mario@example.com"]);
+    expect(emailsDelContatto('[" Mario@Example.com ","mario@example.com"]')).toEqual([
+      "mario@example.com",
+    ]);
+    expect(emailsDelContatto("non-json")).toEqual([]);
+    expect(emailsDelContatto("[1,2]")).toEqual([]);
+  });
+});
 
 describe("parser e normalizzazione", () => {
   it("legge i campi utili di una vCard, con email e telefoni multipli", () => {
@@ -299,6 +310,53 @@ describe("POST /api/sync/contacts", () => {
 
     const [contatto] = await sql("SELECT emails FROM contacts");
     expect(JSON.parse(contatto.emails)).toEqual(["mario@example.com"]);
+  });
+
+  it("trova un contatto salvato con la maiuscola cercando l'email in minuscolo", async () => {
+    const c = await fresh();
+    await seedApple();
+
+    // Riga arrivata prima della normalizzazione alla scrittura: nel database
+    // l'email è maiuscola e non ha ancora un legame con il provider.
+    await sql(
+      "INSERT INTO contacts (display_name, emails, phones, updated_at) VALUES ($1, $2, $3, $4)",
+      ["Mario Rossi", '["Mario@Example.com"]', "[]", 1],
+    );
+
+    const cards = reportDoc([
+      {
+        href: "/123/card/Default/mario.vcf",
+        etag: "e-mario",
+        body: vcard({ UID: "uid-mario", FN: "Mario Rossi", EMAIL: "mario@example.com" }),
+      },
+    ]);
+
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input: any, init: any = {}) => {
+      const url = String(input instanceof Request ? input.url : input);
+      const method = String(init.method ?? "GET").toUpperCase();
+      const body = typeof init.body === "string" ? init.body : "";
+      if (!url.includes("icloud.com")) return real(input, init);
+      const xml = (s: string) =>
+        new Response(s, { status: 207, headers: { "content-type": "application/xml" } });
+      if (method === "PROPFIND") {
+        if (body.includes("addressbook-home-set")) return xml(HOME_DOC);
+        if (body.includes("getctag")) return xml(LIST_DOC);
+        return xml(PRINCIPAL_DOC);
+      }
+      if (method === "REPORT") return xml(cards);
+      throw new Error(`richiesta inattesa: ${method} ${url}`);
+    });
+
+    const r = await c.request("/api/sync/contacts", {});
+    expect(r.status).toBe(200);
+    expect(r.body.errors).toEqual([]);
+    expect(r.body.imported).toBe(0);
+    expect(r.body.merged).toBe(1);
+
+    const contatti = await sql("SELECT emails FROM contacts");
+    expect(contatti).toHaveLength(1);
+    expect(JSON.parse(contatti[0].emails)).toEqual(["mario@example.com"]);
   });
 
   it("iCloud che rifiuta le credenziali in sync spiega la revoca", async () => {
