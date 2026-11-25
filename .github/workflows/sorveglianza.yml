@@ -31,11 +31,17 @@ jobs:
             echo "::error::variabile di repository PROD_URL non impostata"
             exit 1
           fi
-          code=$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 10 "$URL/api/health")
+          code=$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 10 "${URL%/}/api/health")
           echo "HTTP $code"
           cat /tmp/health.json || true
           if [ "$code" != "200" ]; then
             echo "::error::l'endpoint di salute ha risposto $code"
+            exit 1
+          fi
+          # Un 200 non basta: un proxy o una pagina d'errore possono rispondere
+          # 200 senza che l'applicazione abbia interrogato il database.
+          if ! grep -q '"status":"ok"' /tmp/health.json; then
+            echo "::error::risposta di salute senza status ok"
             exit 1
           fi
 
