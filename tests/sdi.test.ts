@@ -13,7 +13,8 @@ import {
   stato,
   type SdiTransport,
 } from "../src/sdi.js";
-import { resetDb, sql } from "./helpers.js";
+import { startServer } from "../scripts/dev-server.js";
+import { httpFetch, resetDb, sql } from "./helpers.js";
 
 const FILE = "IT01234567890_00001.xml";
 
@@ -264,5 +265,37 @@ describe("invio allo SdI", () => {
     const dopo = await aggiornaEsiti(trasportoFinto([scarto]).transport);
     expect(dopo).toEqual({ updated: 0, ignorate: 0, superate: 1 });
     expect((await statoFattura(id)).sdi_state).toBe("sent");
+  });
+
+  it("la rotta del cron accetta solo il segreto condiviso", async () => {
+    const precedente = process.env.CRON_SECRET;
+    process.env.CRON_SECRET = "segreto-del-cron-di-prova-0123456789";
+    const server = await startServer(0);
+    const base = `http://127.0.0.1:${server.port}`;
+    const cron = (headers: Record<string, string> = {}) =>
+      httpFetch(`${base}/api/sdi/cron`, { method: "POST", headers });
+    try {
+      // Senza segreto, con un segreto sbagliato e con uno della lunghezza
+      // sbagliata: la rotta non deve distinguere, risponde sempre 401.
+      expect((await cron()).status).toBe(401);
+      expect((await cron({ Authorization: "Bearer un-altro-segreto" })).status).toBe(401);
+      expect((await cron({ Authorization: "Bearer " })).status).toBe(401);
+
+      const giusto = await cron({ Authorization: `Bearer ${process.env.CRON_SECRET}` });
+      expect(giusto.status).toBe(200);
+      // PEC non collegata: il cron non fallisce, si limita a non fare nulla.
+      expect(await giusto.json()).toEqual({ ok: true, skipped: "not_configured" });
+
+      // Un server senza CRON_SECRET non apre la rotta a nessuno: la variabile
+      // mancante non deve valere come "nessun controllo".
+      delete process.env.CRON_SECRET;
+      expect(
+        (await cron({ Authorization: "Bearer segreto-del-cron-di-prova-0123456789" })).status,
+      ).toBe(401);
+    } finally {
+      if (precedente === undefined) delete process.env.CRON_SECRET;
+      else process.env.CRON_SECRET = precedente;
+      await server.close();
+    }
   });
 });

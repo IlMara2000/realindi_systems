@@ -16,6 +16,12 @@ export const SDI_PEC = "sdi01@pec.fatturapa.it";
 const CHIAVE_CONFIG = "sdi_pec";
 const CHIAVE_PASSWORD = "sdi_pec_password";
 
+// Quanti giorni di posta si rileggono a ogni controllo. La casella si riempie
+// di anni di notifiche e la lettura gira dentro una funzione con un tempo
+// limite: oltre questa finestra il messaggio resta in casella, semplicemente
+// non viene letto. Le notifiche SdI arrivano entro pochi giorni dall'invio.
+export const GIORNI_RICEVUTE = 30;
+
 export const SDI_STATI: Record<string, string> = {
   not_sent: "Non inviata",
   sent: "Inviata · in attesa di ricevuta",
@@ -216,6 +222,11 @@ export async function stato(): Promise<SdiStatus> {
   };
 }
 
+/** PEC collegata e utilizzabile: configurazione salvata e password leggibile. */
+export async function configurata(): Promise<boolean> {
+  return !!(await configPec()) && !!(await passwordPec());
+}
+
 async function trasportoDaConfig(): Promise<SdiTransport> {
   const cfg = await configPec();
   const password = await passwordPec();
@@ -254,7 +265,10 @@ async function trasportoDaConfig(): Promise<SdiTransport> {
       try {
         const lock = await client.getMailboxLock("INBOX");
         try {
-          const criteri: Record<string, unknown> = { from: SDI_PEC };
+          const criteri: Record<string, unknown> = {
+            from: SDI_PEC,
+            since: new Date(Date.now() - GIORNI_RICEVUTE * 24 * 60 * 60 * 1000),
+          };
           for await (const msg of client.fetch(criteri as never, { uid: true, bodyStructure: true })) {
             const parti: any[] = [];
             const raccogli = (nodo: any) => {

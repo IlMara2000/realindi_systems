@@ -1,0 +1,60 @@
+# Lettura automatica delle ricevute SdI: ogni mezz'ora la funzione chiama
+# /api/sdi/cron, che rilegge la PEC (ultimi 30 giorni) e aggiorna lo stato
+# delle fatture. Separato da verifica.yml (codice) e sorveglianza.yml (salute).
+#
+# Serve la variabile di repository PROD_URL e il secret CRON_SECRET: Su Vercel
+# la stessa variabile permette anche di usare il cron nativo, ma su piano Hobby
+# la frequenza minima è una volta al giorno.
+name: Lettura ricevute SdI
+
+on:
+  schedule:
+    # GitHub non garantisce la puntualità: con */30 aspettarsi ritardi di
+    # 10-20 minuti. Le notifiche SdI arrivano entro pochi giorni, quindi un
+    # ritardo così non cambia nulla.
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Due letture insieme non fanno danni (la casella viene riletta intera e gli
+# stati non regrediscono), ma non serve accavallarle.
+concurrency:
+  group: ricevute-sdi
+  cancel-in-progress: false
+
+jobs:
+  leggi:
+    name: Rileggi le notifiche dalla PEC
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: POST /api/sdi/cron
+        env:
+          URL: ${{ vars.PROD_URL }}
+          SEGRETO: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$URL" ]; then
+            echo "::error::variabile di repository PROD_URL non impostata"
+            exit 1
+          fi
+          if [ -z "$SEGRETO" ]; then
+            echo "::error::secret CRON_SECRET non impostato"
+            exit 1
+          fi
+          code=$(curl -sS -o /tmp/esiti.json -w '%{http_code}' --max-time 120 \
+            -X POST -H "Authorization: Bearer $SEGRETO" "${URL%/}/api/sdi/cron")
+          echo "HTTP $code"
+          cat /tmp/esiti.json || true
+          echo
+          if [ "$code" != "200" ]; then
+            echo "::error::la lettura delle ricevute ha risposto $code"
+            exit 1
+          fi
+          # Un 200 non basta: la rotta risponde 200 anche quando non ha nulla da
+          # fare, e quel caso si distingue dal campo skipped.
+          if ! grep -q '"ok":true' /tmp/esiti.json; then
+            echo "::error::risposta senza ok"
+            exit 1
+          fi

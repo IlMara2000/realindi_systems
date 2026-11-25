@@ -1135,6 +1135,23 @@ async function handlePost(req: HandlerRequest): Promise<HandlerResponse> {
   }
   const webhook = await handleWebhookPost(req);
   if (webhook) return webhook;
+
+  // Lettura automatica delle ricevute SdI: la chiama un cron, non un browser,
+  // quindi non c'è sessione né corpo JSON. L'autorizzazione è il segreto
+  // condiviso nell'header Authorization; senza CRON_SECRET sul server la rotta
+  // resta chiusa, così un deploy senza la variabile non espone le letture.
+  if (req.path === "/api/sdi/cron") {
+    const atteso = (process.env.CRON_SECRET ?? "").trim();
+    const fornito = /^Bearer\s+(.+)$/i.exec(req.headers.authorization ?? "")?.[1]?.trim() ?? "";
+    if (!atteso || !fornito || !timingSafeEqualStr(fornito, atteso)) {
+      return sendError(401, "Non autorizzato.");
+    }
+    // PEC non collegata: il cron non deve fallire ogni mezz'ora per una cosa
+    // che si risolve dalle Impostazioni.
+    if (!(await sdi.configurata())) return send({ ok: true, skipped: "not_configured" });
+    return send({ ok: true, ...(await sdi.aggiornaEsiti()) });
+  }
+
   const d = jsonBody(req);
   const path = req.path;
   const p = prisma();

@@ -140,7 +140,7 @@ Cosa succede dopo:
 
 **Verifica.** `tests/sdi.test.ts` su Postgres 17 temporaneo: notifiche riconosciute, PEC salvata senza restituire la password, elenco di ciò che manca, invio con trasporto simulato (destinatario `sdi01@pec.fatturapa.it`, file e contenuto corretti, stato `sent`), errore di autenticazione registrato e ritentabile, rifiuto senza XML e senza PEC, nessun invio automatico senza PEC, ricevute applicate e notifica di un'altra fattura ignorata. Suite completa 240 passati / 1 saltato (porta 55448, poi spenta e rimossa); `npx tsc --noEmit` → 0.
 
-**Limiti dichiarati:** l'invio reale non è stato provato (serve la PEC dell'azienda); la conservazione a norma resta da collegare; le notifiche vengono lette su richiesta, non da un cron.
+**Limiti dichiarati:** l'invio reale non è stato provato (serve la PEC dell'azienda); la conservazione a norma resta da collegare. Le notifiche si leggono su richiesta oppure dal cron ogni mezz'ora (vedi la sezione successiva).
 
 ## Ordine delle notifiche SdI (25 novembre 2026)
 
@@ -153,3 +153,22 @@ L'ancora dell'invio è ciò che risolve il reinvio: dopo uno scarto, «Invia all
 **Verifica.** `tests/sdi.test.ts` copre tre casi nuovi: notifica più vecchia applicata dopo una più recente (aggiorna una volta, poi nessun'altra modifica), notifiche senza data che non fanno regredire lo stato, scarto riletto dopo il reinvio che non riporta la fattura a `rejected`.
 
 Migrazione: `prisma/migrations/20261125193000_sdi_ordine_notifiche` (colonna `invoices.sdi_event_at`). Le fatture esistenti partono con il campo vuoto: la prima notifica che arriva viene applicata e da lì in poi vale l'ordine.
+
+## Lettura automatica delle ricevute SdI (25 novembre 2026)
+
+Le ricevute non hanno più bisogno del pulsante: `POST /api/sdi/cron` rilegge la PEC e aggiorna gli stati, e `.github/workflows/ricevute-sdi.yml` la chiama ogni 30 minuti (più `workflow_dispatch`).
+
+**Autorizzazione.** La rotta sta fra quelle senza sessione — la chiama un cron, non un browser — e accetta solo `Authorization: Bearer <CRON_SECRET>`, confrontato con `timingSafeEqualStr`. Se `CRON_SECRET` non è impostata sul server la rotta resta **chiusa** (401): un deploy senza la variabile non espone la lettura. La 401 non distingue assente, sbagliata o di lunghezza diversa. Con PEC non collegata risponde `200 {ok:true, skipped:"not_configured"}`, così il workflow non fallisce ogni mezz'ora per una cosa che si sistema dalle Impostazioni.
+
+**Finestra di lettura.** `notifications()` cerca ora `{ from: sdi01@pec.fatturapa.it, since: oggi - 30 giorni }` (`GIORNI_RICEVUTE` in `src/sdi.ts`): la casella si riempie di anni di notifiche e la lettura gira in una funzione con un tempo limite. La finestra vale anche per il pulsante in Impostazioni, che usa lo stesso codice; le notifiche SdI arrivano entro pochi giorni dall'invio.
+
+**Attivazione (una volta sola):**
+
+1. su Vercel, variabile d'ambiente `CRON_SECRET` con un valore lungo e casuale (`openssl rand -base64 32`);
+2. su GitHub, secret `CRON_SECRET` con **lo stesso** valore e la variabile di repository `PROD_URL` (già usata da `sorveglianza.yml`);
+3. `INTEGRATIONS_KEY` e PEC configurate su Vercel, e uscita IMAP 993 consentita dalla funzione;
+4. per provarlo subito: `workflow_dispatch` del workflow «Lettura ricevute SdI».
+
+Il cron nativo di Vercel (`"crons"` in `vercel.json`) resta un'alternativa, ma su piano Hobby la frequenza minima è una volta al giorno: per questo il workflow GitHub. GitHub non è puntuale (10-20 minuti di ritardo con `*/30`), irrilevante per delle ricevute.
+
+**Verifica.** `tests/sdi.test.ts` avvia il server vero (`startServer`) e controlla la rotta: 401 senza header, con segreto diverso e con `Bearer` vuoto; 200 con `skipped` quando la PEC non è collegata; di nuovo 401 quando `CRON_SECRET` manca sul server. Il resto della suite copre che i POST autenticati non siano cambiati.
