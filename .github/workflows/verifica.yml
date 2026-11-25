@@ -9,6 +9,8 @@ name: Verifica
 
 on:
   push:
+  # Avvio manuale: utile quando GitHub perde l'evento di un push.
+  workflow_dispatch:
 
 # Un push nuovo sulla stessa ref annulla la run precedente: non ha senso
 # aspettare la coda per una versione del codice già superata.

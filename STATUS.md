@@ -110,3 +110,17 @@ L'archivio esportato da `/api/backup` non conteneva la rubrica: un ripristino av
 Il ripristino legacy (`python3 manage.py restore`) non cambia: esegue il dump così com'è, quindi crea e popola anche `contacts` senza modifiche. Le vecchie istanze continuano a leggere gli archivi nuovi (la tabella in più non dà fastidio a `app.py`), e gli archivi vecchi restano ripristinabili.
 
 **Verifica.** Nuovo `tests/backup-contatti.test.ts`: crea un cliente e due contatti (uno legato al cliente con email e telefono reali, uno cancellato), scarica `/api/backup`, controlla che il dump contenga la tabella e gli INSERT, poi esegue davvero `python3 manage.py restore` in una cartella temporanea e riapre il `crm.sqlite3` risultante con `node:sqlite`: 2 contatti con valori intatti (email non alterata, `client_id`, telefono, `updated_at`, `deleted_at`), 1 cliente e nessuna password. Se il ripristino legacy si rompesse, il test fallirebbe lì. Suite completa 228 passati / 1 saltato su Postgres 17 temporaneo (porta 55444, poi spento e rimosso); `npx tsc --noEmit` → 0.
+
+## Archivio completo: note, ricevute, calendario, link/QR e conversazioni (25 novembre 2026)
+
+Dopo i contatti, `src/backup.ts` esporta anche le altre tabelle di dati che restavano fuori: `notes`, `receipts`, `calendar_events` + `event_links`, `short_links` + `link_visits` + `qr_codes`, `channels` + `conversations` + `messages` + `message_attachments`. Righe complete, comprese quelle cancellate o annullate (un evento `deleted_at`, una ricevuta `cancelled_at`): dopo un ripristino la sincronizzazione deve sapere cosa era stato cancellato, e un numero di ricevuta non si riusa.
+
+Scelte:
+
+- I media delle conversazioni e i loghi dei QR stanno nel dump come BLOB, come gli XML delle fatture: `manage.py restore` non cambia e non serve una cartella nuova.
+- `channels.credentials` viene esportato **vuoto**: è cifrato con `INTEGRATIONS_KEY`, che non viaggia nel backup, quindi sarebbe solo un blob inutile da tenere in giro. Al ripristino i canali vanno ricollegati.
+- Restano fuori, di proposito: sessioni, tentativi di accesso, eventi di login, `assistant_hits`, stato di sincronizzazione (`sync_state`, `sync_calendars`, `sync_channels`, `sync_addressbooks`, `sync_conflicts`) e `knowledge_docs` — sono stato dell'istanza o dati rigenerabili, non dati del CRM.
+
+**Verifica.** Secondo test in `tests/backup.test.ts` (file rinominato da `backup-contatti.test.ts`, ora copre entrambe le parti): semina una riga per ognuna delle tabelle nuove, scarica `/api/backup`, esegue `python3 manage.py restore` e riapre il `crm.sqlite3`: valori, booleani, `BIGINT` (`updated_at`, `at`), BLOB del logo e dell'allegato tornano identici, `credentials` del canale è vuoto e la stringa cifrata non compare nel dump. Suite completa 229 passati / 1 saltato su Postgres 17 temporaneo (porta 55445, poi spento e rimosso); `npx tsc --noEmit` → 0.
+
+`.github/workflows/verifica.yml` ha ora anche `workflow_dispatch`, così la CI si può lanciare a mano quando GitHub perde l'evento di un push (è successo con `cd70a8f`).
