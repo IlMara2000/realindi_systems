@@ -90,6 +90,16 @@ export function emailsDelContatto(valore: string): string[] {
   } catch {
     return [];
   }
+  return emailsDaValore(grezzo);
+}
+
+/**
+ * La regola di normalizzazione applicata a un valore già letto: solo stringhe,
+ * minuscole, senza spazi attorno e senza doppioni. Serve a chi ha già fatto il
+ * parse — lo script di backfill deve prima distinguere un elenco valido da un
+ * JSON illeggibile, e non deve leggere il campo una seconda volta.
+ */
+export function emailsDaValore(grezzo: unknown): string[] {
   if (!Array.isArray(grezzo)) return [];
   return [
     ...new Set(

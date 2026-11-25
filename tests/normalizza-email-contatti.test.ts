@@ -5,7 +5,7 @@ import {
   emailsNormalizzate,
   normalizzaEmailContatti,
 } from "../scripts/normalizza-email-contatti.js";
-import { emailsDelContatto } from "../src/contacts.js";
+import { emailsDaValore, emailsDelContatto } from "../src/contacts.js";
 import { resetDb, sql } from "./helpers.js";
 
 beforeEach(async () => {
@@ -41,6 +41,7 @@ describe("emailsNormalizzate", () => {
     // Una regola sola: lo script non tiene una seconda copia di normalizeEmail.
     const salvato = '["Mario@Example.com"," mario@example.com ","M.ROSSI@Studio.IT"]';
     expect(emailsNormalizzate(salvato)).toEqual(emailsDelContatto(salvato));
+    expect(emailsNormalizzate(salvato)).toEqual(emailsDaValore(JSON.parse(salvato)));
   });
 
   it("rifiuta un valore che non è un elenco di stringhe", () => {
