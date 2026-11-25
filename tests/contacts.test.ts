@@ -138,6 +138,18 @@ describe("parser e normalizzazione", () => {
     expect(normalizePhone("333.123.4567")).toBe("3331234567");
     expect(normalizePhone("")).toBe("");
   });
+
+  it("un import attribuisce lo stesso istante a tutte le sue schede", () => {
+    // La fusione dei doppioni confronta questi istanti: se due schede lette
+    // insieme ne avessero due diversi, la seconda sovrascriverebbe la prima a
+    // seconda di quando il parser è stato chiamato.
+    const due = vcard({ UID: "uid-uno", FN: "Mario Rossi", EMAIL: "mario@example.com" }) +
+      "\r\n" +
+      vcard({ UID: "uid-due", FN: "Mario Rossi", EMAIL: "Mario@Example.com" });
+    const cards = parseVcards(due, "https://p1-contacts.icloud.com/1/card/uno.vcf", 1_760_000_000_000);
+    expect(cards).toHaveLength(2);
+    expect(cards.map((c) => c.updated_at)).toEqual([1_760_000_000_000, 1_760_000_000_000]);
+  });
 });
 
 describe("POST /api/sync/contacts", () => {
@@ -154,6 +166,14 @@ describe("POST /api/sync/contacts", () => {
   it("iCloud: importa da CardDAV, fonde i doppioni per email e collega il cliente", async () => {
     const c = await fresh();
     await seedApple();
+    // Orologio che avanza a ogni lettura: prima della correzione ogni scheda
+    // riceveva un `Date.now()` suo, quindi la seconda risultava più recente
+    // della prima e la fusione ne copiava l'email con la maiuscola. Il caso si
+    // presentava a caso, quando il millisecondo cambiava fra una scheda e
+    // l'altra; qui è forzato, così il test non è più fortunato ma ripetibile.
+    const inizio = Date.now();
+    let battito = 0;
+    vi.spyOn(Date, "now").mockImplementation(() => inizio + ++battito * 1_000);
     await sql(
       "INSERT INTO clients(name, email, company, phone, vat_number, address, notes) VALUES ('Mario Rossi','mario@example.com','Studio Rossi','','','','')",
     );
@@ -230,6 +250,11 @@ describe("POST /api/sync/contacts", () => {
     expect(r2.body.errors).toEqual([]);
     expect(r2.body.imported).toBe(0);
     expect(await sql("SELECT id FROM contacts")).toHaveLength(1);
+    // Anche al secondo giro, con l'orologio che è avanzato, la fusione non
+    // ricopia l'email con la maiuscola.
+    expect(JSON.parse((await sql("SELECT emails FROM contacts"))[0].emails)).toContain(
+      "mario@example.com",
+    );
   });
 
   it("iCloud che rifiuta le credenziali in sync spiega la revoca", async () => {

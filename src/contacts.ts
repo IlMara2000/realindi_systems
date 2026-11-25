@@ -92,8 +92,14 @@ function unescapeText(value: string): string {
 /**
  * Parser vCard volutamente minimale: prende solo i campi che il CRM mostra.
  * Le righe con più valori (EMAIL, TEL) si ripetono e vengono raccolte in lista.
+ *
+ * `updatedAt` è l'istante da attribuire alle schede. Il valore predefinito va
+ * bene per una scheda sola; chi legge un'intera rubrica passa lo stesso istante
+ * a tutte (vedi `pullIcloud`), perché la fusione dei doppioni confronta questi
+ * istanti e due schede dello stesso import non devono risultare una più nuova
+ * dell'altra solo perché il parser è stato chiamato un millisecondo dopo.
  */
-export function parseVcards(vcf: string, href: string): RemoteContact[] {
+export function parseVcards(vcf: string, href: string, updatedAt = Date.now()): RemoteContact[] {
   const out: RemoteContact[] = [];
   let card: Record<string, string> | null = null;
   const list = (current: Record<string, string>, key: string): string[] => {
@@ -129,7 +135,7 @@ export function parseVcards(vcf: string, href: string): RemoteContact[] {
           phones: list(card, "TEL"),
           notes: unescapeText(card.NOTE ?? "").trim(),
           etag: null,
-          updated_at: Date.now(),
+          updated_at: updatedAt,
           deleted: false,
         });
       }
@@ -243,8 +249,17 @@ export async function carddavAddressbooks(creds: AppleCreds): Promise<Addressboo
   return out;
 }
 
-/** Tutte le vCard di una rubrica, con ETag. */
-export async function carddavQuery(addressbook: string, creds: AppleCreds): Promise<RemoteContact[]> {
+/**
+ * Tutte le vCard di una rubrica, con ETag. `lettoIl` è l'istante dell'import
+ * (uno solo per tutta la sincronizzazione, vedi `pullIcloud`): tutte le schede
+ * lette insieme lo condividono, così la fusione dei doppioni non dipende da
+ * quanti millisecondi passa fra una scheda e l'altra.
+ */
+export async function carddavQuery(
+  addressbook: string,
+  creds: AppleCreds,
+  lettoIl = Date.now(),
+): Promise<RemoteContact[]> {
   const res = await fetch(addressbook, {
     method: "REPORT",
     headers: {
@@ -269,7 +284,7 @@ export async function carddavQuery(addressbook: string, creds: AppleCreds): Prom
     const etag = findKey(resp, "getetag");
     const data = findKey(resp, "address-data");
     if (typeof data !== "string" || !data.includes("BEGIN:VCARD")) continue;
-    for (const card of parseVcards(data, absolute)) {
+    for (const card of parseVcards(data, absolute, lettoIl)) {
       out.push({
         ...card,
         addressbook,
@@ -499,9 +514,13 @@ async function pullIcloud(
   const p = prisma();
   const creds = await appleCreds();
   const addressbooks = await carddavAddressbooks(creds);
+  // Un istante per tutto l'import: due schede della stessa lettura non sono
+  // una più recente dell'altra, e la fusione dei doppioni deve decidere allo
+  // stesso modo a ogni esecuzione invece di dipendere dall'orologio.
+  const lettoIl = Date.now();
   for (const book of addressbooks) {
     try {
-      const cards = await carddavQuery(book.href, creds);
+      const cards = await carddavQuery(book.href, creds, lettoIl);
       await applyRemote(cards, counts);
       await p.syncAddressbook.upsert({
         where: { provider_addressbook: { provider: "icloud", addressbook: book.href } },
