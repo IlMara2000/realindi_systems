@@ -36,7 +36,13 @@ CREATE TABLE IF NOT EXISTS appointments(id INTEGER PRIMARY KEY, name TEXT NOT NU
   notes TEXT NOT NULL, start TEXT NOT NULL, end TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'confirmed',
   cancel_token TEXT NOT NULL UNIQUE, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS blocks(id INTEGER PRIMARY KEY, start TEXT NOT NULL, end TEXT NOT NULL, reason TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS login_attempts(ip TEXT PRIMARY KEY, count INTEGER NOT NULL, reset REAL NOT NULL);`;
+CREATE TABLE IF NOT EXISTS login_attempts(ip TEXT PRIMARY KEY, count INTEGER NOT NULL, reset REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS contacts(id INTEGER PRIMARY KEY, client_id INTEGER,
+  display_name TEXT NOT NULL DEFAULT '', given_name TEXT NOT NULL DEFAULT '',
+  family_name TEXT NOT NULL DEFAULT '', org TEXT NOT NULL DEFAULT '',
+  job_title TEXT NOT NULL DEFAULT '', emails TEXT NOT NULL DEFAULT '[]',
+  phones TEXT NOT NULL DEFAULT '[]', notes TEXT NOT NULL DEFAULT '',
+  updated_at INTEGER NOT NULL, deleted_at TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP);`;
 
 function sqlString(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
@@ -45,6 +51,8 @@ function sqlString(value: string): string {
 function sqlValue(value: unknown): string {
   if (value === null || value === undefined) return "NULL";
   if (typeof value === "number") return Number.isFinite(value) ? String(value) : "NULL";
+  // updated_at dei contatti è un BIGINT: va scritto come numero, non fra apici.
+  if (typeof value === "bigint") return value.toString();
   if (typeof value === "boolean") return value ? "1" : "0";
   if (Buffer.isBuffer(value) || value instanceof Uint8Array) {
     return `X'${Buffer.from(value).toString("hex")}'`;
@@ -73,6 +81,10 @@ const INVOICE_COLUMNS = [
 const DOCUMENT_COLUMNS = ["id", "client_id", "project_id", "name", "storage_name", "size", "sha256", "created_at"];
 const APPOINTMENT_COLUMNS = ["id", "name", "email", "notes", "start", "end", "status", "cancel_token", "created_at"];
 const BLOCK_COLUMNS = ["id", "start", "end", "reason"];
+const CONTACT_COLUMNS = [
+  "id", "client_id", "display_name", "given_name", "family_name", "org", "job_title",
+  "emails", "phones", "notes", "updated_at", "deleted_at", "created_at",
+];
 
 export class BackupTooLarge extends Error {
   constructor() {
@@ -83,7 +95,7 @@ export class BackupTooLarge extends Error {
 
 export async function buildBackup(): Promise<Buffer> {
   const p = prisma();
-  const [settingsRows, clients, projects, quotes, invoices, documents, appointments, blocks] =
+  const [settingsRows, clients, projects, quotes, invoices, documents, appointments, blocks, contacts] =
     await Promise.all([
       p.setting.findMany(),
       p.client.findMany({ orderBy: { id: "asc" } }),
@@ -93,6 +105,9 @@ export async function buildBackup(): Promise<Buffer> {
       p.document.findMany({ orderBy: { id: "asc" } }),
       p.appointment.findMany({ orderBy: { id: "asc" } }),
       p.block.findMany({ orderBy: { id: "asc" } }),
+      // Tutta la rubrica, comprese le schede cancellate dalla sincronizzazione:
+      // l'archivio è una copia fedele, non la vista dell'app.
+      p.contact.findMany({ orderBy: { id: "asc" } }),
     ]);
 
   const lines: string[] = [DDL];
@@ -107,6 +122,7 @@ export async function buildBackup(): Promise<Buffer> {
   for (const row of documents) lines.push(insert("documents", DOCUMENT_COLUMNS, row)); // senza content
   for (const row of appointments) lines.push(insert("appointments", APPOINTMENT_COLUMNS, row));
   for (const row of blocks) lines.push(insert("blocks", BLOCK_COLUMNS, row));
+  for (const row of contacts) lines.push(insert("contacts", CONTACT_COLUMNS, row));
 
   const zip = new JSZip();
   zip.file("database.sql", lines.join("\n") + "\n");
