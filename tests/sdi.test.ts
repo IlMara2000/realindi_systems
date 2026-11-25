@@ -347,4 +347,39 @@ describe("invio allo SdI", () => {
     expect(fallita.last_lettura).toMatchObject({ updated: 0, ok: false });
     expect(fallita.last_lettura?.error).toContain("IMAP irraggiungibile");
   });
+
+  it("elenca solo le fatture inviate da giorni e ancora senza ricevuta", async () => {
+    await configuraPec();
+    const isoGiorniFa = (g: number) => new Date(Date.now() - g * 24 * 60 * 60 * 1000).toISOString();
+    const sqlGiorniFa = (g: number) => isoGiorniFa(g).slice(0, 19).replace("T", " ");
+    const numerata = async (number: string) => {
+      const id = await fatturaConXml();
+      await sql("UPDATE invoices SET number = $1 WHERE id = $2", [number, id]);
+      return id;
+    };
+
+    const appesa = await numerata("2026/00007");
+    await sql("UPDATE invoices SET sdi_state = 'sent', sdi_event_at = $1, sdi_sent_at = $2 WHERE id = $3", [
+      isoGiorniFa(5),
+      sqlGiorniFa(5),
+      appesa,
+    ]);
+    const recente = await numerata("2026/00008");
+    await sql("UPDATE invoices SET sdi_state = 'sent', sdi_event_at = $1 WHERE id = $2", [isoGiorniFa(1), recente]);
+    // Una ricevuta arrivata toglie la fattura dall'elenco anche se l'invio è vecchio.
+    const consegnata = await numerata("2026/00009");
+    await sql("UPDATE invoices SET sdi_state = 'delivered', sdi_event_at = $1 WHERE id = $2", [isoGiorniFa(10), consegnata]);
+    // Inviata prima che esistesse sdi_event_at: vale comunque sdi_sent_at.
+    const senzaAncora = await numerata("2026/00010");
+    await sql("UPDATE invoices SET sdi_state = 'sent', sdi_event_at = NULL, sdi_sent_at = $1 WHERE id = $2", [
+      sqlGiorniFa(20),
+      senzaAncora,
+    ]);
+
+    const sd = await stato();
+    expect(sd.senza_ricevuta.giorni).toBe(3);
+    expect(sd.senza_ricevuta.fatture.map((f) => f.number)).toEqual(["2026/00010", "2026/00007"]);
+    expect(Date.parse(sd.senza_ricevuta.fatture[0].at)).toBeLessThan(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    expect(sd.senza_ricevuta.fatture.map((f) => f.id)).toEqual([senzaAncora, appesa]);
+  });
 });

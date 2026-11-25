@@ -2025,6 +2025,22 @@ function sdiLastLettura(l) {
   const conta = [`${l.updated} aggiornate`, `${l.ignorate} senza fattura`, `${l.superate} più vecchie di quelle registrate`].join(", ");
   return `<p class="hint"><strong>Ultima lettura delle ricevute:</strong> ${quando} · ${esc(conta)} <span class="muted">(solo le notifiche nuove di quel giro)</span></p>`;
 }
+// Fatture trasmesse allo SdI da giorni e ancora senza alcuna ricevuta: sono
+// quelle che rischiano di restare appese senza che nessuno se ne accorga.
+// L'elenco arriva dal server già filtrato con la soglia in giorni.
+function sdiSenzaRicevuta(s) {
+  const fatture = (s && s.fatture) || [];
+  if (!fatture.length) return "";
+  const righe = fatture
+    .map((f) => `<li><strong>${esc(f.number)}</strong> · inviata ${esc(timeLabel(f.at))}</li>`)
+    .join("");
+  const quante =
+    fatture.length === 1
+      ? "Una fattura è inviata"
+      : `${fatture.length} fatture sono inviate`;
+  const ricevuta = fatture.length === 1 ? "non ha ancora nessuna ricevuta" : "non hanno ancora nessuna ricevuta";
+  return `<div class="callout"><strong>Trasmissioni senza ricevuta</strong><p>${quante} allo SdI da più di ${esc(s.giorni)} giorni e ${ricevuta}. Controlla la casella PEC o reinvia la fattura.</p><ul>${righe}</ul></div>`;
+}
 function sdiSettingsPanel(sd) {
   const c = (sd && sd.config) || {};
   const attivo = !!(sd && sd.configured);
@@ -2041,6 +2057,7 @@ function sdiSettingsPanel(sd) {
     </form>
     ${sd && sd.missing && sd.missing.length ? `<div class="callout"><strong>Manca ancora</strong><ul>${sd.missing.map((m) => `<li>${esc(m)}</li>`).join("")}</ul></div>` : ""}
     ${sdiLastLettura(sd && sd.last_lettura)}
+    ${sdiSenzaRicevuta(sd && sd.senza_ricevuta)}
     <p class="hint">La password non viene mai riletta dal server. Gli stati restano scritti sulla fattura: un invio fallito si può ritentare.</p>
   </div></section></div>`;
 }
@@ -2680,6 +2697,7 @@ window.crmBindAppleForm = bindAppleForm;
 window.crmRefresh = refresh;
 window.crmToast = toast;
 window.sdiLastLettura = sdiLastLettura;
+window.sdiSenzaRicevuta = sdiSenzaRicevuta;
 (async () => {
   try {
     if (location.pathname.startsWith("/book/")) return await booking();

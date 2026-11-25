@@ -204,3 +204,13 @@ Gli altri casi restano come prima e hanno la precedenza: senza letture «Nessuna
 **Verifica.** Nuovo `tests/sdi-cron.test.ts` (happy-dom, come `apple-form.test.ts`) chiama la funzione che disegna la riga: con una lettura di due ore fa compare «Il cron non sta girando» e la soglia; con dieci minuti fa resta la riga informativa con i conteggi; senza letture resta «Nessuna lettura delle ricevute». Suite completa 245 passati / 1 saltato, `npx tsc --noEmit` → 0, `node --check public/app.js` ok.
 
 **Limite.** Il pannello non è stato aperto nel browser: la resa del riquadro è verificata solo sul testo prodotto dalla funzione.
+
+## Trasmissioni rimaste senza ricevuta (25 novembre 2026)
+
+Una fattura inviata allo SdI resta in `sent` finché non arriva una ricevuta. Se la trasmissione si perde — PEC accettata ma notifica mai arrivata, casella piena, workflow fermo — la fattura rimane lì per sempre, e dal pannello non si vedeva quali fossero: i conteggi per stato dicono quante sono, non quali.
+
+Ora `stato()` restituisce anche `senza_ricevuta`: le fatture ancora in `sent` da più di **3 giorni** (`GIORNI_SENZA_RICEVUTA` in `src/sdi.ts`), dalla più vecchia, con `id`, `number` e l'istante dell'invio. La ricevuta di consegna arriva di norma entro poche ore, quindi qualche giorno di silenzio è già anomalo senza allarmare per un ritardo di un giorno. L'istante è `sdi_event_at`; per le fatture inviate prima che quella colonna esistesse vale `sdi_sent_at`, letto come UTC come il resto del campo.
+
+In Impostazioni → Invio allo SdI, sotto l'ultima lettura, compare un riquadro con il numero di fatture e l'elenco «numero · inviata data» (in `Europe/Rome`), più l'invito a controllare la casella PEC o a reinviare. Se non ce ne sono il riquadro non c'è. La soglia arriva dal server insieme all'elenco, così il testo non la ripete a mano. Non serve nessuna migrazione: colonne e dati c'erano già.
+
+**Verifica.** `tests/sdi.test.ts` prepara quattro fatture — una inviata 5 giorni fa e una 20 giorni fa (quest'ultima con il solo `sdi_sent_at`), una inviata ieri e una consegnata — e controlla che `senza_ricevuta.fatture` contenga solo le prime due, dalla più vecchia, con la soglia a 3. `tests/sdi-senza-ricevuta.test.ts` (happy-dom) verifica il riquadro: elenco con numeri e date, singolare/plurale, e nessun HTML quando la lista è vuota.

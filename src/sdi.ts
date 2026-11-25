@@ -23,6 +23,11 @@ const CHIAVE_PASSWORD = "sdi_pec_password";
 // non viene letto. Le notifiche SdI arrivano entro pochi giorni dall'invio.
 export const GIORNI_RICEVUTE = 30;
 
+// Giorni dopo i quali una fattura ancora in stato «sent» viene considerata
+// appesa: la ricevuta di consegna arriva di norma entro poche ore, quindi
+// qualche giorno di silenzio vuol dire che c'è qualcosa da guardare.
+export const GIORNI_SENZA_RICEVUTA = 3;
+
 export const SDI_STATI: Record<string, string> = {
   not_sent: "Non inviata",
   sent: "Inviata · in attesa di ricevuta",
@@ -65,6 +70,19 @@ export interface SdiLettura {
   error: string;
 }
 
+export interface SdiSospesa {
+  id: number;
+  number: string;
+  /** Istante dell'invio: `sdi_event_at`, oppure `sdi_sent_at` per le fatture più vecchie. */
+  at: string;
+}
+
+export interface SdiSenzaRicevuta {
+  /** Soglia usata per selezionare le fatture, così il pannello la mostra senza ripeterla. */
+  giorni: number;
+  fatture: SdiSospesa[];
+}
+
 export interface SdiStatus {
   configured: boolean;
   key_configured: boolean;
@@ -73,6 +91,8 @@ export interface SdiStatus {
   missing: string[];
   /** Null finché nessuna lettura è stata fatta (né dal cron né dal pulsante). */
   last_lettura: SdiLettura | null;
+  /** Fatture inviate da giorni e ancora senza alcuna ricevuta. */
+  senza_ricevuta: SdiSenzaRicevuta;
 }
 
 export interface SdiTransport {
@@ -204,13 +224,36 @@ export async function salvaConfig(d: Record<string, unknown>): Promise<SdiStatus
   return stato();
 }
 
+async function trasmissioniSenzaRicevuta(): Promise<SdiSenzaRicevuta> {
+  const p = prisma();
+  // Solo le «sent»: appena arriva una ricevuta lo stato cambia e la fattura
+  // esce dall'elenco da sola.
+  const righe = await p.invoice.findMany({
+    where: { sdi_state: "sent" },
+    select: { id: true, number: true, sdi_event_at: true, sdi_sent_at: true },
+  });
+  const limite = Date.now() - GIORNI_SENZA_RICEVUTA * 24 * 60 * 60 * 1000;
+  const fatture = righe
+    .map((r) => {
+      // sdi_event_at è ISO; sdi_sent_at è UTC senza suffisso e resta l'unico
+      // riferimento per le fatture inviate prima che esistesse sdi_event_at.
+      const at = r.sdi_event_at ?? (r.sdi_sent_at ? `${r.sdi_sent_at.replace(" ", "T")}Z` : "");
+      return { id: r.id, number: r.number || `#${r.id}`, at, ms: at ? Date.parse(at) : NaN };
+    })
+    .filter((r) => Number.isFinite(r.ms) && r.ms < limite)
+    .sort((a, b) => a.ms - b.ms)
+    .map(({ id, number, at }) => ({ id, number, at }));
+  return { giorni: GIORNI_SENZA_RICEVUTA, fatture };
+}
+
 export async function stato(): Promise<SdiStatus> {
   const p = prisma();
-  const [cfg, password, impostazioni, lettura] = await Promise.all([
+  const [cfg, password, impostazioni, lettura, senzaRicevuta] = await Promise.all([
     configPec(),
     passwordPec(),
     p.setting.findMany({ where: { key: { in: ["vat_number", "tax_regime", "address", "postcode", "city"] } } }),
     p.sdiSync.findUnique({ where: { id: 1 } }),
+    trasmissioniSenzaRicevuta(),
   ]);
   const valori = new Map(impostazioni.map((r) => [r.key, r.value]));
   const keyConfigured = !!process.env.INTEGRATIONS_KEY;
@@ -243,6 +286,7 @@ export async function stato(): Promise<SdiStatus> {
           error: lettura.error,
         }
       : null,
+    senza_ricevuta: senzaRicevuta,
   };
 }
 
