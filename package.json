@@ -12,6 +12,7 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "db:check": "tsx scripts/check-migrations.ts",
     "db:pulisci-test": "tsx scripts/pulisci-db-test.ts",
+    "db:normalizza-email": "tsx scripts/normalizza-email-contatti.ts",
     "diagnose:ai": "tsx scripts/diagnose-ai.ts",
     "diagnose:db": "tsx scripts/diagnose-db.ts",
     "test:locale": "bash scripts/test-locale.sh",

@@ -83,3 +83,16 @@ Procedura consigliata, quindi: `npm run password:reimposta -- --sì --portachiav
 **Verifica end-to-end (25 novembre 2026).** Provata su un Postgres 17 temporaneo locale (porta 55432, cartella in `/tmp`, poi eliminata), non sulla produzione, con le voci vere del Portachiavi salvate prima e ripristinate dopo: `tests/password-reset.test.ts` 11/11 verde sul database temporaneo, `npm run password:reimposta -- --sì --portachiavi` uscita 0 senza stampare segreti, poi confronto diretto fra Portachiavi e hash nel database — password corrispondente, 8 codici su 8 validi, valore su una riga sola. Le due voci originali sono state riscritte e risultano identiche byte per byte al backup. `npx tsc --noEmit` → 0. Il database temporaneo e il cluster sono stati spenti e rimossi: nessun residuo, la produzione non è stata toccata.
 
 **Produzione in 503 (25 novembre 2026).** `https://realindi.vercel.app/api/health` risponde `{"status":"degraded"}`: Prisma rifiuta la connessione con «Your account has restrictions: planLimitReached». La causa sono i database `realindi_test_run_*` accumulati dalle vecchie run della suite (oggi non ne crea più). Finché l'account non viene sbloccato restano fermi anche `npm run password:reimposta` e `npm run db:pulisci-test`; sblocco da console Prisma (eliminare i vecchi `realindi_test_run_*`) o tramite il supporto Prisma, poi `npm run db:pulisci-test` e nuova verifica di `/api/health`.
+
+## Email dei contatti normalizzate anche nel database (25 novembre 2026)
+
+L'import normalizza le email alla scrittura (commit `f61d537`), ma i contatti arrivati prima conservano la maiuscola: `Mario@Example.com` resta così nel campo `emails`, quindi ricerca per email e doppioni non lo riconoscono.
+
+`npm run db:normalizza-email` è il passaggio una tantum: legge tutti i contatti, applica la stessa regola dell'import (`normalizeEmail`, niente spazi attorno, niente doppioni) e riscrive **solo** il campo `emails` delle righe che cambiano. Ogni `UPDATE` è condizionato al valore appena letto, così una scrittura concorrente della sincronizzazione non viene sovrascritta. Le righe il cui `emails` non è un elenco JSON di stringhe non si toccano: sono da guardare a mano, e il comando esce con 1 elencandone gli id.
+
+- `npm run db:normalizza-email` — sola lettura: elenca righe e valori che cambierebbero.
+- `npm run db:normalizza-email -- --applica` — scrive, poi **rilegge tutto** e dice se resta qualcosa da normalizzare.
+
+**Verifica (25 novembre 2026).** Provato su un Postgres 17 temporaneo (porta 55440, cartella in `/tmp`, poi eliminata) con 7 contatti di prova: 4 righe corrette, 6 valori cambiati, 1 riga con `emails` illeggibile lasciata intatta e segnalata, uscita 0; seconda esecuzione con 0 righe scritte (idempotente); contenuto finale riletto con `psql`. Nuovo `tests/normalizza-email-contatti.test.ts` (6 test): regola, conteggio in sola lettura senza scritture, scrittura con conteggio e verifica, idempotenza. Suite completa 224 passati / 1 saltato, `npx tsc --noEmit` → 0. Cluster temporaneo spento e rimosso.
+
+**Sulla produzione il conteggio non c'è ancora:** l'account Prisma risponde `planLimitReached` anche in sola lettura (uscita 1). Appena l'account è sbloccato: `npm run db:normalizza-email -- --applica` e il numero di righe toccate è nella riga «Righe scritte».
