@@ -70,6 +70,7 @@
 
   .metric.featured {
     background: var(--paper);
+    color: var(--ink);
     box-shadow: var(--raised), inset 0 0 0 2px rgba(255, 140, 66, 0.35);
   }
 
@@ -251,6 +252,7 @@
 
 .dark-mode .metric.featured {
   background: var(--paper);
+  color: var(--ink);
   box-shadow: var(--raised), inset 0 0 0 2px rgba(255, 140, 66, 0.35);
 }
 
@@ -339,7 +341,7 @@
 .dark-mode .pill.sent,
 .dark-mode .pill.issued,
 .dark-mode .pill.discovery {
-  color: #33415c;
+  color: var(--ink);
 }
 
 /* La barra dell'ultimo mese era quasi nera sul pannello scuro. */
@@ -518,7 +520,7 @@ button.primary,
   gap: 8px;
 }
 .secondary {
-  background: white;
+  background: var(--paper);
   color: var(--ink);
   padding: 10px 15px;
   border: 1px solid var(--line);
@@ -537,8 +539,8 @@ button.primary,
   min-height: 100vh;
 }
 .sidebar {
-  background: #e9edf4;
-  color: #141418;
+  background: var(--paper);
+  color: var(--ink);
   padding: 32px 20px;
   position: sticky;
   top: 0;
@@ -568,12 +570,12 @@ button.primary,
   font-size: 10px;
   letter-spacing: 3px;
   margin: 8px 0 40px 43px;
-  color: #5b6473;
+  color: var(--muted);
 }
 .nav-label {
   font-size: 10px;
   letter-spacing: 1.8px;
-  color: #6b7483;
+  color: var(--muted);
   margin: 0 12px 13px;
 }
 .nav {
@@ -584,19 +586,19 @@ button.primary,
 .nav a {
   padding: 12px 14px;
   border-radius: 8px;
-  color: #5b6473;
+  color: var(--muted);
   font-size: 13px;
   display: flex;
   gap: 13px;
   align-items: center;
 }
 .nav a:hover {
-  background: #eef2f8;
+  background: var(--paper);
   text-decoration: none;
 }
 .nav a.active {
   background: var(--lime);
-  color: #141418;
+  color: var(--ink);
   font-weight: 650;
 }
 .nav svg {
@@ -613,14 +615,14 @@ button.primary,
   align-items: center;
   gap: 10px;
   margin-top: 24px;
-  border-top: 1px solid #d5dce7;
+  border-top: 1px solid var(--line);
   padding: 23px 4px 0;
   font-size: 12px;
 }
 .avatar {
-  background: #f1f4f9;
+  background: var(--paper);
   border-radius: 50%;
-  color: #141418;
+  color: var(--ink);
   width: 36px;
   height: 36px;
   display: inline-flex;
@@ -630,12 +632,12 @@ button.primary,
   flex-shrink: 0;
 }
 .account .avatar {
-  background: #d5dce7;
-  color: #e9edf4;
+  background: var(--shade);
+  color: var(--ink);
 }
 .account small {
   display: block;
-  color: #6b7483;
+  color: var(--muted);
   margin-top: 4px;
 }
 .main {
@@ -643,7 +645,7 @@ button.primary,
 }
 .topbar {
   height: 80px;
-  background: #fffdf7fffb0;
+  background: var(--bg);
   border-bottom: 1px solid var(--line);
   padding: 0 38px;
   display: flex;
@@ -789,7 +791,7 @@ p {
   margin-bottom: 24px;
 }
 .metric {
-  background: white;
+  background: var(--paper);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 21px;
@@ -815,9 +817,18 @@ p {
   color: var(--muted);
   font-size: 11px;
 }
+/* Scheda in evidenza: fondo scuro e testo chiaro nel tema chiaro; i blocchi
+   scuri la riportano a --paper con testo --ink, quindi il colore va dichiarato
+   qui e ridefinito lì, altrimenti il testo resta del colore sbagliato. */
 .metric.featured {
-  background: #141418;
-  border-color: #d5dce7;
+  background: var(--ink);
+  border-color: var(--line);
+  color: var(--bg);
+}
+.metric.featured .metric-label,
+.metric.featured small {
+  color: inherit;
+  opacity: 0.85;
 }
 .grid-two {
   display: grid;
@@ -826,7 +837,7 @@ p {
   margin-bottom: 23px;
 }
 .panel {
-  background: white;
+  background: var(--paper);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   overflow: hidden;
@@ -870,7 +881,7 @@ p {
   max-height: 130px;
 }
 .chart-col:last-child .bar {
-  background: #141418;
+  background: var(--ink);
 }
 .chart-col small {
   position: absolute;
@@ -892,7 +903,7 @@ p {
   align-items: center;
   gap: 12px;
   padding: 17px 23px;
-  border-bottom: 1px solid #dee4ee;
+  border-bottom: 1px solid var(--line);
 }
 .list-row:last-child {
   border-bottom: 0;
@@ -913,7 +924,7 @@ p {
   margin-top: 5px;
 }
 .date-tile {
-  background: #eef2f8;
+  background: var(--paper);
   border-radius: 9px;
   min-width: 43px;
   padding: 8px;
@@ -933,22 +944,22 @@ p {
   font-size: 10px;
   font-weight: 600;
   padding: 5px 8px;
-  background: #dee4ee;
-  color: #5b6473;
+  background: var(--shade);
+  color: var(--ink);
   white-space: nowrap;
 }
 .pill.active,
 .pill.accepted,
 .pill.paid,
 .pill.confirmed {
-  background: #e9edf4;
-  color: #141418;
+  background: var(--paper);
+  color: var(--ink);
 }
 .pill.sent,
 .pill.issued,
 .pill.discovery {
-  background: #e6eaf3;
-  color: #55607a;
+  background: var(--paper);
+  color: var(--muted);
 }
 .pill.rejected,
 .pill.cancelled,
@@ -1001,8 +1012,8 @@ table {
 }
 th {
   padding: 12px 22px;
-  background: #eef2f8;
-  color: #7b8390;
+  background: var(--paper);
+  color: var(--muted);
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.65px;
@@ -1010,7 +1021,7 @@ th {
 }
 td {
   padding: 17px 22px;
-  border-top: 1px solid #dee4ee;
+  border-top: 1px solid var(--line);
   font-size: 12px;
 }
 td strong {
@@ -1029,12 +1040,12 @@ td .actions {
   white-space: nowrap;
 }
 .callout {
-  border: 1px solid #d5dce7;
-  background: #f1f4f9;
+  border: 1px solid var(--line);
+  background: var(--paper);
   padding: 16px 20px;
   border-radius: 10px;
   font-size: 12px;
-  color: #4a5568;
+  color: var(--muted);
   margin-bottom: 22px;
   line-height: 1.7;
 }
@@ -1045,7 +1056,7 @@ td .actions {
 }
 .project {
   padding: 22px;
-  background: white;
+  background: var(--paper);
   border: 1px solid var(--line);
   border-radius: var(--radius);
 }
@@ -1080,8 +1091,8 @@ label {
 input,
 select,
 textarea {
-  background: white;
-  border: 1px solid #d5dce7;
+  background: var(--paper);
+  border: 1px solid var(--line);
   border-radius: 7px;
   width: 100%;
   padding: 10px 12px;
@@ -1167,11 +1178,11 @@ textarea {
 .remove-line {
   height: 40px;
   color: var(--red);
-  background: #faf0ed;
+  background: var(--paper);
   border-radius: 6px;
 }
 .totals {
-  background: #f1f4f9;
+  background: var(--paper);
   padding: 18px;
   border-radius: 10px;
   margin-top: 20px;
@@ -1287,9 +1298,9 @@ html::-webkit-scrollbar-corner {
   grid-template-columns: 1fr 1fr;
 }
 .auth-story {
-  background: #e9edf4;
+  background: var(--paper);
   padding: 60px;
-  color: #141418;
+  color: var(--ink);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -1302,10 +1313,10 @@ html::-webkit-scrollbar-corner {
 }
 .auth-story p {
   max-width: 400px;
-  color: #5b6473;
+  color: var(--muted);
 }
 .auth-story small {
-  color: #6b7483;
+  color: var(--muted);
 }
 .auth-form {
   align-self: center;
@@ -1350,7 +1361,7 @@ html::-webkit-scrollbar-corner {
 .codice-lista {
   margin: 14px 0 0;
   padding: 12px 12px 12px 30px;
-  background: #f1f4f9;
+  background: var(--paper);
   border-radius: 7px;
   font-size: 12px;
   line-height: 1.7;
@@ -1395,7 +1406,7 @@ dialog::backdrop {
   margin-bottom: 24px;
 }
 .modal-close {
-  background: #eef2f8;
+  background: var(--paper);
   border-radius: 50%;
   width: 30px;
   height: 30px;
@@ -1473,10 +1484,10 @@ dialog::backdrop {
   margin: 18px 0 4px;
 }
 .slot {
-  border: 1px solid #d5dce7;
+  border: 1px solid var(--line);
   border-radius: 7px;
   padding: 12px;
-  background: white;
+  background: var(--paper);
   color: var(--green);
 }
 .slot.selected {
@@ -1490,7 +1501,7 @@ dialog::backdrop {
   margin-top: 25px;
 }
 .link-box {
-  background: #f1f4f9;
+  background: var(--paper);
   padding: 12px;
   overflow-wrap: anywhere;
   border-radius: 7px;
@@ -1506,7 +1517,7 @@ dialog::backdrop {
   max-width: 800px;
   margin: 40px auto;
   padding: 35px;
-  background: white;
+  background: var(--paper);
 }
 .print-doc header {
   display: flex;
@@ -1536,7 +1547,7 @@ dialog::backdrop {
 .print-doc footer {
   font-size: 10px;
   line-height: 1.8;
-  color: #5b6473;
+  color: var(--muted);
   border-top: 1px solid var(--line);
   margin-top: 35px;
   padding-top: 20px;
@@ -1841,7 +1852,7 @@ dialog::backdrop {
 }
 @media print {
   body {
-    background: white;
+    background: var(--paper);
   }
   #root,
   #toast,
@@ -1967,8 +1978,8 @@ dialog::backdrop {
   gap: 16px;
 }
 .note-card {
-  background: white;
-  border: 2px solid #e9edf4;
+  background: var(--paper);
+  border: 2px solid var(--line);
   border-radius: 12px;
   padding: 18px;
   box-shadow: 4px 4px 0 #1b202724;
@@ -2018,8 +2029,8 @@ dialog::backdrop {
   margin: 0;
 }
 .provider-chip {
-  border: 1.5px solid #e9edf4;
-  background: white;
+  border: 1.5px solid var(--line);
+  background: var(--paper);
   border-radius: 999px;
   padding: 6px 12px;
   font-size: 11px;
@@ -2052,7 +2063,7 @@ dialog::backdrop {
   text-transform: capitalize;
 }
 .month-nav {
-  background: #eef2f8;
+  background: var(--paper);
   width: 30px;
   height: 30px;
   border-radius: 8px;
@@ -2067,11 +2078,11 @@ dialog::backdrop {
   grid-template-columns: repeat(7, 1fr);
 }
 .month-grid .wd {
-  background: #eef2f8;
+  background: var(--paper);
   font-size: 10px;
   letter-spacing: 0.65px;
   text-transform: uppercase;
-  color: #7b8390;
+  color: var(--muted);
   text-align: center;
   padding: 10px 0;
   border-bottom: 1px solid var(--line);
@@ -2080,9 +2091,9 @@ dialog::backdrop {
 .day-cell {
   min-height: 92px;
   border: 0;
-  border-right: 1px solid #dee4ee;
-  border-bottom: 1px solid #dee4ee;
-  background: white;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
   text-align: left;
   padding: 7px;
   display: flex;
@@ -2092,15 +2103,15 @@ dialog::backdrop {
   color: inherit;
 }
 .day-cell:hover {
-  background: #f1f4f9;
+  background: var(--paper);
 }
 .day-cell.other {
-  background: #eef2f8;
+  background: var(--paper);
 }
 .day-cell.selected {
   outline: 2px solid var(--green);
   outline-offset: -2px;
-  background: #f3f6fa;
+  background: var(--paper);
 }
 .day-num {
   font-size: 12px;
@@ -2117,8 +2128,8 @@ dialog::backdrop {
   color: white;
 }
 .event-chip {
-  background: #e9edf4;
-  color: #141418;
+  background: var(--paper);
+  color: var(--ink);
   border-radius: 5px;
   font-size: 10px;
   padding: 3px 5px;
@@ -2243,6 +2254,7 @@ dialog::backdrop {
 
   .metric.featured {
     background: var(--paper);
+    color: var(--ink);
     box-shadow: var(--raised), inset 0 0 0 2px rgba(255, 106, 26, 0.35);
   }
 
@@ -2274,7 +2286,7 @@ dialog::backdrop {
     background: var(--bg);
     border: 0;
     box-shadow: var(--inset);
-    color: #4a5568;
+    color: var(--muted);
   }
 
   .totals,
@@ -2290,7 +2302,7 @@ dialog::backdrop {
   input,
   select,
   textarea {
-    background: #e3e8f1;
+    background: var(--paper);
     border: 0;
     border-radius: 12px;
     box-shadow: inset 4px 4px 9px #bfc9d9, inset -4px -4px 9px var(--light);
@@ -2413,8 +2425,8 @@ dialog::backdrop {
   .pill.sent,
   .pill.issued,
   .pill.discovery {
-    background: #e6eaf3;
-    color: var(--accent);
+    background: var(--paper);
+    color: var(--ink);
   }
 
   .pill.rejected,
