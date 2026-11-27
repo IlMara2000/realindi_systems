@@ -54,6 +54,7 @@ model PasskeyChallenge {
   kind      String
   ip        String @default("")
   expires   Float
+  @@index([expires])
   @@map("passkey_challenges")
 }
 
