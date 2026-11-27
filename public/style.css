@@ -1335,6 +1335,11 @@ html::-webkit-scrollbar-corner {
   width: 100%;
   margin-top: 14px;
 }
+/* Accesso con passkey: sotto la password, stessa larghezza ma peso minore. */
+.auth-form .passkey-login {
+  width: 100%;
+  margin-top: 8px;
+}
 .auth-form .field {
   margin-top: 20px;
 }

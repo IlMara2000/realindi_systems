@@ -31,6 +31,32 @@ model Session {
   @@map("sessions")
 }
 
+// Passkey (WebAuthn): accesso con Face ID, impronta o PIN del dispositivo.
+// Il segreto non lascia il dispositivo; qui resta la chiave pubblica con cui
+// verificare la firma. `counter` deve crescere a ogni accesso: un valore che
+// torna indietro è il segnale di un autenticatore clonato.
+model Passkey {
+  id         String @id
+  public_key Bytes
+  counter    BigInt @default(0)
+  transports String @default("")
+  label      String @default("")
+  created_at BigInt @default(0)
+  last_used  BigInt @default(0)
+  @@map("passkeys")
+}
+
+// Sfida WebAuthn in sospeso: monouso e con scadenza breve. Su Vercel ogni
+// richiesta può cadere su un'istanza diversa, quindi non può stare in memoria.
+model PasskeyChallenge {
+  id        String @id
+  challenge String
+  kind      String
+  ip        String @default("")
+  expires   Float
+  @@map("passkey_challenges")
+}
+
 model Client {
   id             Int     @id @default(autoincrement())
   name           String

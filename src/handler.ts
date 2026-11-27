@@ -16,6 +16,7 @@ import {
   destroySession,
   ensureDefaults,
   hasPassword,
+  loginConPasskey,
   nuoviCodiciEmergenza,
   parseCookie,
   prisma,
@@ -86,7 +87,16 @@ import {
 } from "./assistant.js";
 import { agentReply, executeAgentActions } from "./agent.js";
 import * as sdi from "./sdi.js";
-import { bookingLimit, cancelLimit, replyLimit } from "./ratelimit.js";
+import {
+  elencoPasskey,
+  opzioniAccesso,
+  opzioniRegistrazione,
+  passkeyDisponibili,
+  registraPasskey,
+  rimuoviPasskey,
+  verificaAccesso,
+} from "./passkey.js";
+import { bookingLimit, cancelLimit, passkeyLimit, replyLimit } from "./ratelimit.js";
 import {
   activeLink,
   deleteLink,
@@ -653,7 +663,12 @@ async function handleGet(req: HandlerRequest): Promise<HandlerResponse> {
   if (staticResponse) return staticResponse;
 
   if (path === "/api/session") {
-    return send({ setup: !(await hasPassword()), authenticated: await auth(parseCookie(req.headers.cookie, "crm_session")) });
+    return send({
+      setup: !(await hasPassword()),
+      authenticated: await auth(parseCookie(req.headers.cookie, "crm_session")),
+      // La pagina di accesso mostra il pulsante della passkey solo se ce n'è una.
+      passkey: await passkeyDisponibili(),
+    });
   }
 
   if (path === "/api/webhooks/whatsapp") return metaVerification(req, "whatsapp");
@@ -816,6 +831,7 @@ async function handleGet(req: HandlerRequest): Promise<HandlerResponse> {
       notes: await p.note.findMany({ orderBy: [{ pinned: "desc" }, { updated_at: "desc" }] }),
       tools: await listTools(),
       accessi: await accessiRecenti(),
+      passkey: await elencoPasskey(),
       sessioni: await sessioniAttive(token),
       codici_emergenza: await codiciDisponibili(),
       integrations: await integrationStatus(),
@@ -1224,6 +1240,23 @@ async function handlePost(req: HandlerRequest): Promise<HandlerResponse> {
     return send({ ok: true });
   }
 
+  // ----------------------------------------------------- passkey (pubbliche)
+  // L'accesso con passkey parte senza sessione: è il login. Le opzioni portano
+  // una sfida monouso, quindi una risposta intercettata non si può riusare.
+  if (path === "/api/passkey/login/options" || path === "/api/passkey/login") {
+    const rifiuto = await limitePubblico(passkeyLimit, `passkey:${req.ip}`);
+    if (rifiuto) throw new Invalid(rifiuto);
+  }
+  if (path === "/api/passkey/login/options") {
+    return send(await opzioniAccesso(req.ip));
+  }
+  if (path === "/api/passkey/login") {
+    const sfida = requiredField(d, "sfida", 64);
+    await verificaAccesso(sfida, d.response);
+    const res = await loginConPasskey(req.ip, req.headers["user-agent"] ?? "");
+    return send({ ok: true }, 200, "application/json; charset=utf-8", [["Set-Cookie", res.cookie]]);
+  }
+
   // ------------------------------------------------------------ autenticati
   const sessionToken = parseCookie(req.headers.cookie, "crm_session");
   if (!(await auth(sessionToken))) throw new Invalid("Sessione scaduta. Accedi di nuovo.");
@@ -1560,6 +1593,23 @@ async function handlePost(req: HandlerRequest): Promise<HandlerResponse> {
       if (code === "TOO_SHORT") throw new Invalid("Usa una password di almeno 12 caratteri.");
       throw err;
     }
+  }
+
+  // La registrazione richiede una sessione: una passkey si aggiunge solo da un
+  // dispositivo già entrato con la password o con un'altra passkey.
+  if (path === "/api/passkey/register/options") {
+    return send(await opzioniRegistrazione(req.ip));
+  }
+  if (path === "/api/passkey/register") {
+    const sfida = requiredField(d, "sfida", 64);
+    await registraPasskey(sfida, d.response, optionalField(d, "label", 80));
+    return send({ ok: true });
+  }
+  if (path === "/api/passkey/delete") {
+    if (!(await rimuoviPasskey(requiredField(d, "id", 200)))) {
+      throw new Invalid("Passkey non trovata.");
+    }
+    return send({ ok: true });
   }
 
   if (path === "/api/emergenza") {

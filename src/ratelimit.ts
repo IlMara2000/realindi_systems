@@ -126,3 +126,12 @@ export const bookingLimit = createLimiter({
 export const cancelLimit = createLimiter({
   store: postgresStore(BOOKING_WINDOW_MS, MAX_CANCELLATIONS),
 });
+
+// Le opzioni di accesso con passkey sono pubbliche: senza tetto, chiunque
+// potrebbe far crescere la tabella delle sfide. La verifica della firma resta
+// il vero controllo; questo ferma solo i cicli.
+export const MAX_PASSKEY_TENTATIVI = 20;
+
+export const passkeyLimit = createLimiter({
+  store: postgresStore(BOOKING_WINDOW_MS, MAX_PASSKEY_TENTATIVI),
+});

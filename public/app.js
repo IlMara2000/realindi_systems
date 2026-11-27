@@ -268,6 +268,136 @@ async function api(url, data) {
   if (!res.ok) throw new Error(result.error || "Operazione non riuscita.");
   return result;
 }
+
+/* Passkey (WebAuthn): il browser produce la firma con Face ID, impronta o PIN
+   del dispositivo; il server conserva solo la chiave pubblica. Identificatori
+   e firme viaggiano in base64url, il formato che accetta l'API WebAuthn. */
+function b64urlBytes(valore) {
+  const s = String(valore).replace(/-/g, "+").replace(/_/g, "/");
+  const bin = atob(s + "=".repeat((4 - (s.length % 4)) % 4));
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+function bytesB64url(valore) {
+  let bin = "";
+  const bytes = new Uint8Array(valore);
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function passkeySupportata() {
+  return Boolean(window.PublicKeyCredential && navigator.credentials?.create);
+}
+/** Nome leggibile del dispositivo, per riconoscere la passkey nell'elenco. */
+function passkeyEtichetta() {
+  const ua = navigator.userAgent;
+  const dispositivo = /iPhone/.test(ua)
+    ? "iPhone"
+    : /iPad/.test(ua)
+      ? "iPad"
+      : /Macintosh|Mac OS X/.test(ua)
+        ? "Mac"
+        : /Android/.test(ua)
+          ? "Android"
+          : "Dispositivo";
+  return `${dispositivo} · ${browserLabel(ua)}`;
+}
+function passkeyErrore(err) {
+  if (err?.name === "NotAllowedError") return new Error("Operazione annullata o scaduta: riprova.");
+  if (err?.name === "NotSupportedError" || err?.name === "SecurityError")
+    return new Error("Questo dispositivo non può usare le passkey su questo indirizzo.");
+  return err instanceof Error ? err : new Error("Passkey non riuscita.");
+}
+function serializzaAccesso(credenziale) {
+  const r = credenziale.response;
+  return {
+    id: credenziale.id,
+    rawId: bytesB64url(credenziale.rawId),
+    type: credenziale.type,
+    response: {
+      clientDataJSON: bytesB64url(r.clientDataJSON),
+      authenticatorData: bytesB64url(r.authenticatorData),
+      signature: bytesB64url(r.signature),
+      userHandle: r.userHandle ? bytesB64url(r.userHandle) : null,
+    },
+    clientExtensionResults: credenziale.getClientExtensionResults(),
+  };
+}
+function serializzaRegistrazione(credenziale) {
+  const r = credenziale.response;
+  return {
+    id: credenziale.id,
+    rawId: bytesB64url(credenziale.rawId),
+    type: credenziale.type,
+    response: {
+      clientDataJSON: bytesB64url(r.clientDataJSON),
+      attestationObject: bytesB64url(r.attestationObject),
+      transports: r.getTransports ? r.getTransports() : [],
+    },
+    clientExtensionResults: credenziale.getClientExtensionResults(),
+    authenticatorAttachment: credenziale.authenticatorAttachment || undefined,
+  };
+}
+/** Entra con una passkey già registrata: è un login, quindi senza sessione. */
+async function entraConPasskey(bottone) {
+  const etichetta = bottone.textContent;
+  bottone.disabled = true;
+  try {
+    const { sfida, options } = await api("/api/passkey/login/options", {});
+    let credenziale;
+    try {
+      credenziale = await navigator.credentials.get({
+        publicKey: {
+          ...options,
+          challenge: b64urlBytes(options.challenge),
+          allowCredentials: (options.allowCredentials || []).map((c) => ({
+            ...c,
+            id: b64urlBytes(c.id),
+          })),
+        },
+      });
+    } catch (err) {
+      throw passkeyErrore(err);
+    }
+    if (!credenziale) throw new Error("Nessuna passkey selezionata.");
+    await api("/api/passkey/login", { sfida, response: serializzaAccesso(credenziale) });
+    await refresh();
+  } finally {
+    bottone.disabled = false;
+    bottone.textContent = etichetta;
+  }
+}
+/** Registra questo dispositivo. Richiede la sessione: si parte da Impostazioni. */
+async function aggiungiPasskey() {
+  if (!passkeySupportata()) {
+    throw new Error("Questo browser non supporta le passkey: servono Safari o Chrome aggiornati.");
+  }
+  const { sfida, options } = await api("/api/passkey/register/options", {});
+  let credenziale;
+  try {
+    credenziale = await navigator.credentials.create({
+      publicKey: {
+        ...options,
+        challenge: b64urlBytes(options.challenge),
+        user: { ...options.user, id: b64urlBytes(options.user.id) },
+        excludeCredentials: (options.excludeCredentials || []).map((c) => ({
+          ...c,
+          id: b64urlBytes(c.id),
+        })),
+      },
+    });
+  } catch (err) {
+    throw passkeyErrore(err);
+  }
+  if (!credenziale) throw new Error("Passkey non creata.");
+  await api("/api/passkey/register", {
+    sfida,
+    response: serializzaRegistrazione(credenziale),
+    label: passkeyEtichetta(),
+  });
+  await refresh();
+  toast("Passkey aggiunta: ora entri con Face ID o impronta.");
+}
 function toast(s) {
   $("#toast").textContent = s;
   $("#toast").style.display = "block";
@@ -389,11 +519,37 @@ function mostraEmergenza(codici) {
   $("#emergenza-entra").onclick = () => refresh();
 }
 
-function auth(setup) {
+function auth(setup, passkeyAttiva = null) {
   themeControl.transient = true;
   themeControl.useSystem();
   $("#root").innerHTML =
-    `<div class="auth-page"><button type="button" class="theme-toggle auth-theme" id="theme-toggle" aria-label="Cambia tema" aria-pressed="${document.documentElement.classList.contains("dark-mode")}"><svg class="theme-icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg><svg class="theme-icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button><section class="auth-story"><div class="brand"><img class="brand-mark" src="/assets/logo-realindi.png" alt="" width="32" height="32"> REALINDI</div><div><div class="eyebrow">Un solo posto. Tutto il tuo lavoro.</div><h1>Più spazio ai progetti.<br>Meno alla burocrazia.</h1><p>Clienti, proposte, documenti e appuntamenti. Il workspace pensato per il tuo lavoro indipendente.</p></div><small>REALINDI SYSTEMS · Freelancer workspace</small></section><section class="auth-form"><div class="brand"><img class="brand-mark" src="/assets/logo-realindi.png" alt="" width="32" height="32"> REALINDI</div><div class="eyebrow">Il tuo nuovo punto di partenza</div><h1>${setup ? "Crea il tuo workspace" : "Bentornato nel workspace"}</h1><p class="subtitle">${setup ? "Scegli la password per proteggere clienti e documenti." : "Accedi per riprendere da dove avevi lasciato."}</p><form id="auth-form">${field("Password", "password", "password", "", 'required minlength="12" maxlength="256" autocomplete="' + (setup ? "new-password" : "current-password") + '"')}${setup ? field("Ripeti password", "confirm", "password", "", 'required minlength="12" autocomplete="new-password"') : RECUPERO_PASSWORD}<div class="error" role="alert"></div><button class="primary" type="submit">${setup ? "Crea workspace" : "Accedi al workspace"} →</button><p class="hint">${setup ? "Almeno 12 caratteri. I dati vengono conservati nella cartella locale del progetto." : "Sessione privata · accesso protetto"}</p></form></section></div>`;
+    `<div class="auth-page"><button type="button" class="theme-toggle auth-theme" id="theme-toggle" aria-label="Cambia tema" aria-pressed="${document.documentElement.classList.contains("dark-mode")}"><svg class="theme-icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg><svg class="theme-icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button><section class="auth-story"><div class="brand"><img class="brand-mark" src="/assets/logo-realindi.png" alt="" width="32" height="32"> REALINDI</div><div><div class="eyebrow">Un solo posto. Tutto il tuo lavoro.</div><h1>Più spazio ai progetti.<br>Meno alla burocrazia.</h1><p>Clienti, proposte, documenti e appuntamenti. Il workspace pensato per il tuo lavoro indipendente.</p></div><small>REALINDI SYSTEMS · Freelancer workspace</small></section><section class="auth-form"><div class="brand"><img class="brand-mark" src="/assets/logo-realindi.png" alt="" width="32" height="32"> REALINDI</div><div class="eyebrow">Il tuo nuovo punto di partenza</div><h1>${setup ? "Crea il tuo workspace" : "Bentornato nel workspace"}</h1><p class="subtitle">${setup ? "Scegli la password per proteggere clienti e documenti." : "Accedi per riprendere da dove avevi lasciato."}</p><form id="auth-form">${field("Password", "password", "password", "", 'required minlength="12" maxlength="256" autocomplete="' + (setup ? "new-password" : "current-password") + '"')}${setup ? field("Ripeti password", "confirm", "password", "", 'required minlength="12" autocomplete="new-password"') : RECUPERO_PASSWORD}<div class="error" role="alert"></div><button class="primary" type="submit">${setup ? "Crea workspace" : "Accedi al workspace"} →</button><p class="hint">${setup ? "Almeno 12 caratteri. I dati vengono conservati nella cartella locale del progetto." : "Sessione privata · accesso protetto"}</p></form>${
+      setup
+        ? ""
+        : '<button type="button" class="secondary passkey-login" id="passkey-login" hidden>Entra con Face ID o impronta</button>'
+    }</section></div>`;
+  const passkeyBtn = $("#passkey-login");
+  if (passkeyBtn) {
+    // Il pulsante compare solo se il server ha una passkey e il browser la sa
+    // usare: un pulsante che porta a un errore è peggio di nessun pulsante.
+    const abilita = (attiva) => {
+      if (attiva && passkeySupportata()) passkeyBtn.hidden = false;
+    };
+    if (passkeyAttiva === null) {
+      api("/api/session").then((s) => abilita(Boolean(s?.passkey))).catch(() => undefined);
+    } else {
+      abilita(passkeyAttiva);
+    }
+    passkeyBtn.onclick = async () => {
+      const errore = $(".error", $(".auth-form"));
+      if (errore) errore.textContent = "";
+      try {
+        await entraConPasskey(passkeyBtn);
+      } catch (e) {
+        if (errore) errore.textContent = e.message;
+      }
+    };
+  }
   $("#auth-form").onsubmit = async (e) => {
     e.preventDefault();
     const f = e.target,
@@ -1070,10 +1226,43 @@ function avvisoAccesso() {
 
 function securityView() {
   const accessi = state.accessi || [];
+  const passkeys = state.passkey || [];
   const sessioni = state.sessioni || [];
   const codici = Number(state.codici_emergenza || 0);
   return (
     title("Accesso al workspace.", "La password che protegge clienti, documenti e fatture.") +
+    panel(
+      "Passkey (Face ID o impronta)",
+      `<div class="panel-body">${
+        passkeySupportata()
+          ? `<p class="subtitle">${
+              passkeys.length
+                ? `${passkeys.length} ${
+                    passkeys.length === 1 ? "passkey registrata" : "passkey registrate"
+                  }: entri da /app con Face ID, impronta o il PIN del dispositivo, senza digitare la password.`
+                : "Entra da /app con Face ID o impronta invece della password. La passkey resta sul dispositivo: qui c'è solo la chiave pubblica."
+            }</p>${
+              passkeys.length
+                ? passkeys
+                    .map(
+                      (k) =>
+                        `<div class="list-row"><div class="list-info"><strong>${esc(
+                          k.label || "Dispositivo",
+                        )}</strong><small>aggiunta ${timeLabel(k.created_at)}${
+                          k.last_used ? ` · ultimo uso ${timeLabel(k.last_used)}` : " · mai usata"
+                        }</small></div>${btn("Rimuovi", "passkey-delete", k.id)}</div>`,
+                    )
+                    .join("")
+                : ""
+            }<div class="section-gap">${btn(
+              "Aggiungi passkey",
+              "passkey-add",
+              "",
+              passkeys.length ? "secondary" : "primary",
+            )}</div><p class="hint">La password resta valida come riserva: se perdi il dispositivo entri con quella o con un codice di emergenza.</p>`
+          : '<p class="subtitle">Questo browser non supporta le passkey. Servono Safari o Chrome aggiornati, su HTTPS (oppure su localhost).</p>'
+      }</div>`,
+    ) +
     panel(
       "Cambia password",
       `<div class="panel-body">${avvisoAccesso()}<form id="password-form" class="form-grid">${field(
@@ -1140,7 +1329,11 @@ function securityView() {
                   `<div class="list-row"><div class="list-info"><strong>${timeLabel(
                     a.at,
                   )}</strong><small>${esc(a.ip)} · ${
-                    a.via === "codice" ? "codice di emergenza" : "password"
+                    a.via === "codice"
+                      ? "codice di emergenza"
+                      : a.via === "passkey"
+                        ? "passkey"
+                        : "password"
                   }</small></div>${
                     a.nuovo ? '<span class="pill">nuovo indirizzo</span>' : ""
                   }</div>`,
@@ -2208,6 +2401,17 @@ document.addEventListener("click", async (e) => {
       }
       return;
     }
+    if (a === "passkey-add") {
+      await aggiungiPasskey();
+      return;
+    }
+    if (a === "passkey-delete") {
+      if (!confirm("Rimuovere questa passkey? Da quel dispositivo servirà la password.")) return;
+      await api("/api/passkey/delete", { id });
+      await refresh();
+      toast("Passkey rimossa.");
+      return;
+    }
     if (a === "revoca-sessione") {
       await api("/api/sessions/revoke", { id });
       await refresh();
@@ -2715,12 +2919,22 @@ window.sdiSenzaRicevuta = sdiSenzaRicevuta;
     if ([...qs.keys()].length)
       history.replaceState(null, "", location.pathname + location.hash);
     const s = await api("/api/session");
-    if (!s.authenticated) return auth(s.setup);
+    if (!s.authenticated) return auth(s.setup, s.passkey);
     await refresh();
   } catch (e) {
+    // Un errore 500 non dice perché. Il controllo di salute distingue il
+    // database irraggiungibile da un guasto momentaneo: da telefono non si
+    // aprono gli strumenti di sviluppo, quindi la causa va scritta a schermo.
+    const databaseGiu = await fetch("/api/health", { credentials: "same-origin" })
+      .then((r) => r.status === 503)
+      .catch(() => false);
     $("#root").innerHTML =
       '<div class="empty"><strong>Impossibile caricare il workspace</strong><p>' +
-      esc(e.message) +
+      esc(
+        databaseGiu
+          ? "Il database del workspace non risponde, quindi i dati non possono essere caricati. Non dipende dal telefono: riprova fra qualche minuto."
+          : e.message,
+      ) +
       '</p><a href="/app">Riprova</a></div>';
   }
 })();

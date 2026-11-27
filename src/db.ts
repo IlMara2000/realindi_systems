@@ -143,7 +143,7 @@ export interface Accesso {
   /** Millisecondi UTC: il client lo formatta direttamente. */
   at: number;
   ip: string;
-  via: "password" | "codice";
+  via: "password" | "codice" | "passkey";
   /** Primo accesso in assoluto da questo IP (il primo di tutti non conta). */
   nuovo: boolean;
 }
@@ -331,6 +331,19 @@ export async function verifyLogin(ip: string, password: string, userAgent = ""):
   });
   if (count >= LIMITE_TENTATIVI_LOGIN) throw new RateLimited(Math.ceil(reset - now));
   throw new Error("BAD_PASSWORD");
+}
+
+/**
+ * Accesso riuscito con una passkey: stessa sessione e stesso storico della
+ * password, e i tentativi falliti dell'IP si azzerano come dopo un login
+ * normale — chi dimostra di avere il dispositivo non deve restare bloccato.
+ */
+export async function loginConPasskey(ip: string, userAgent = ""): Promise<LoginResult> {
+  const p = prisma();
+  await p.loginAttempt.delete({ where: { ip } }).catch(() => undefined);
+  await registraAccesso(ip, "passkey");
+  await p.session.deleteMany({ where: { expires: { lt: Date.now() / 1000 } } });
+  return { ok: true, cookie: await creaSessione(ip, userAgent) };
 }
 
 export interface SetupResult extends LoginResult {

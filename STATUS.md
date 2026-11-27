@@ -214,3 +214,22 @@ Ora `stato()` restituisce anche `senza_ricevuta`: le fatture ancora in `sent` da
 In Impostazioni → Invio allo SdI, sotto l'ultima lettura, compare un riquadro con il numero di fatture e l'elenco «numero · inviata data» (in `Europe/Rome`), più l'invito a controllare la casella PEC o a reinviare. Se non ce ne sono il riquadro non c'è. La soglia arriva dal server insieme all'elenco, così il testo non la ripete a mano. Non serve nessuna migrazione: colonne e dati c'erano già.
 
 **Verifica.** `tests/sdi.test.ts` prepara quattro fatture — una inviata 5 giorni fa e una 20 giorni fa (quest'ultima con il solo `sdi_sent_at`), una inviata ieri e una consegnata — e controlla che `senza_ricevuta.fatture` contenga solo le prime due, dalla più vecchia, con la soglia a 3. `tests/sdi-senza-ricevuta.test.ts` (happy-dom) verifica il riquadro: elenco con numeri e date, singolare/plurale, e nessun HTML quando la lista è vuota.
+
+## Accesso con passkey (27 novembre 2026)
+
+Dal pannello **Sicurezza** si registra una passkey (Face ID, impronta o PIN del dispositivo) e dalla pagina di accesso si entra da lì, senza digitare la password. La password e i codici di emergenza restano validi come riserva: un dispositivo perso non chiude il titolare fuori.
+
+Come funziona:
+
+- la credenziale privata non lascia il dispositivo; nel database (`passkeys`) restano la chiave pubblica, il contatore di utilizzo e un'etichetta leggibile (per esempio «iPhone · Safari»). Il contatore deve crescere a ogni accesso: un valore che torna indietro è il segnale di un autenticatore clonato;
+- la registrazione richiede una sessione già aperta (`POST /api/passkey/register/options` e `/api/passkey/register`): si aggiunge una passkey solo da un dispositivo già entrato. Massimo 10 per account;
+- l'accesso (`POST /api/passkey/login/options` e `/api/passkey/login`) è pubblico come il login con password ed è limitato per IP (20 tentativi in 10 minuti). Ogni sfida è monouso, dura 5 minuti e vive nella tabella `passkey_challenges`: su Vercel due richieste possono cadere su istanze diverse, quindi non può stare in memoria;
+- in entrambe le cerimonie la verifica dell'utente è obbligatoria (`userVerification: "required"`): una passkey senza PIN o biometria sarebbe solo una chiave fisica;
+- il login con passkey crea la stessa sessione della password, registra l'accesso con `via = "passkey"` (compare in «Accessi recenti») e azzera i tentativi falliti dell'IP;
+- `/api/session` espone `passkey: true/false`, così il pulsante «Entra con Face ID o impronta» compare solo quando serve, e `/api/state` elenca le passkey registrate per il pannello Sicurezza.
+
+**Dominio.** Le passkey sono legate al dominio: `APP_ORIGIN` (in `.env.example`, non ancora impostata) dice quale usare. Senza variabile valgono `https://realindi.vercel.app` su Vercel e `http://localhost:8080` in sviluppo. Se il workspace si apre da un dominio personalizzato va impostata, altrimenti registrazione e accesso vengono rifiutati; cambiandola le passkey esistenti non valgono più.
+
+**Verifica.** `npm run generate`, `npx tsc --noEmit` → 0, `node --check public/app.js` ok. Migrazione `20261127120000_passkey` applicata sul Postgres locale (porta 5439). Sul server vero in locale: `/api/session` risponde `passkey:false` prima della registrazione; `/api/passkey/register/options` senza sessione rifiuta, con sessione restituisce la sfida con `rp.id = localhost` e la riga compare in `passkey_challenges`; una registrazione con una sfida inesistente risponde «Richiesta scaduta»; senza passkey `/api/passkey/login/options` risponde «Nessuna passkey registrata: entra con la password»; `/api/state` contiene `passkey: []`. `/api/session` e `/api/state` restano serviti anche se la tabella non esiste ancora, così la pagina di accesso non si rompe prima della migrazione.
+
+**Limiti dichiarati.** La cerimonia vera (Face ID o impronta) non è stata eseguita: serve un autenticatore fisico, quindi registrazione e accesso vanno provati dal telefono o dal Mac. In produzione la migrazione non è ancora applicata perché l'account Prisma è bloccato (`planLimitReached`): va eseguita con `npm run db:migrate` subito dopo lo sblocco, prima di usare le passkey.
